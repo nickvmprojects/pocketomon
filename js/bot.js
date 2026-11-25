@@ -1,13 +1,14 @@
 // Bot players: used to build the snapshot library and for balance simulations.
 // Deliberately imperfect: they like favourite types, reroll a set amount and arrange simply.
-import { MON, TYPES, TIER_POWER, LV_POWER, ECHO_KEYS, RULES } from './data.js';
-import * as R from './run.js';
+import { MON, TYPES, TIER_POWER, LV_POWER, ECHO_KEYS, RULES, TRINKET, isBattleTrinket, price } from './data.js?v=0.2';
+import * as R from './run.js?v=0.2';
 
 const SUPPORT_FRONT = ['rock', 'electric', 'grass', 'psychic', 'ice'];
 
-export function makeProfile(r, run) {
+// know: optional { monId: multiplier } learned from a previous simulation (informed bots)
+export function makeProfile(r, run, know = null) {
   const favs = r.shuffle(run.types).slice(0, 1 + r.int(2));
-  return { favs, favBias: 0.2 + r() * 0.9, rerolls: r.int(5), order: r() < 0.6 ? 'support' : 'power', eventSmart: r() };
+  return { favs, favBias: 0.2 + r() * 0.9, rerolls: r.int(5), order: r() < 0.6 ? 'support' : 'power', eventSmart: r(), know };
 }
 
 export const instValue = (m) => TIER_POWER[MON[m.id].tier] * LV_POWER[m.lvl] * (m.atk + m.pow) / 2;
@@ -15,6 +16,8 @@ export const instValue = (m) => TIER_POWER[MON[m.id].tier] * LV_POWER[m.lvl] * (
 function offerValue(run, prof, mon) {
   const def = MON[mon.id];
   let v = TIER_POWER[def.tier] * (mon.atk + mon.pow) / 2;
+  v *= Math.pow((10 * def.tier) / price(def), 0.7); // cheap-for-its-tier is attractive
+  if (prof.know && prof.know[mon.id]) v *= prof.know[mon.id];
   const copies = R.owned(run).filter(o => o.m.id === mon.id && o.m.lvl === 1).length;
   const l2 = R.owned(run).some(o => o.m.id === mon.id && o.m.lvl === 2);
   v *= 1 + copies * 0.55 + (l2 ? 0.3 : 0);
@@ -79,7 +82,7 @@ export function botShop(run, r, prof) {
     }
     if (did) continue;
     const cheapest = Math.min(...run.shop.filter(x => x.mon).map(x => R.offerPrice(run, MON[x.mon.id])), 99);
-    if (rerolls < prof.rerolls && run.gold >= R.rerollCostNow(run) + Math.min(cheapest, 3)) { R.reroll(run); rerolls++; continue; }
+    if (rerolls < prof.rerolls && run.gold >= R.rerollCostNow(run) + Math.min(cheapest, 10)) { R.reroll(run); rerolls++; continue; }
     break;
   }
   // lock a good offer we couldn't afford sometimes
@@ -113,7 +116,27 @@ export function arrange(run, prof) {
   rest.slice(0, run.bench.length).forEach((m, i) => run.bench[i] = m);
 }
 
+export function botTrinkets(run, r, prof) {
+  let q;
+  while ((q = R.currentTrinketChoice(run))) {
+    const counts = {};
+    for (const o of R.owned(run)) counts[MON[o.m.id].type] = (counts[MON[o.m.id].type] || 0) + 1;
+    const score = (id) => {
+      const t = TRINKET[id];
+      let v = t.tier + r() * 1.5;
+      if (id.startsWith('charm_')) v += (counts[id.slice(6)] || 0) * 0.6 - 1;
+      if (!isBattleTrinket(id)) v -= run.day > 6 ? 1.5 : 0.3;
+      return v;
+    };
+    const best = q.options.slice().sort((a, b) => score(b) - score(a))[0];
+    R.chooseTrinket(run, best);
+  }
+}
+
 export function botDay(run, r, prof) {
   if (run.phase === 'event') botEvent(run, r, prof);
+  botTrinkets(run, r, prof);
   botShop(run, r, prof);
+  botTrinkets(run, r, prof);
+  arrange(run, prof);
 }

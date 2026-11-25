@@ -1,5 +1,5 @@
 // Pocketomon — game data. All numbers are first-pass and tuned by tools/gen.mjs.
-export const VERSION = '0.1';
+export const VERSION = '0.2';
 
 export const RULES = {
   battleSeconds: 30,       // regular time
@@ -10,16 +10,17 @@ export const RULES = {
   shopSlots: 5,
   startLives: 5,
   winsToChampion: 10,
-  rerollCost: 1,
+  rerollCost: 3,
   typesPerRun: 5,
   copyBias: 0.2,           // chance a shop slot shows a copy of a mon you own
   shieldCap: 0.5,          // shield can't exceed 50% of max HP
 };
 
 export const teamHp = (day) => 200 + day * 100;
-export const income = (day) => Math.min(11 + day, 16);
-export const price = (tier) => tier + 2;              // 3,4,5,6,7
-export const sellPerCopy = (tier) => 1 + Math.floor(tier / 2); // 1,2,2,3,3
+export const income = (day) => Math.min(30 + 10 * day, 90);   // 40, 50, ... capped at 90 from day 6
+// Shop price = 10 x tier, adjusted -5..+5 per mon by how strong it is (COST_ADJ, tuned by tools/gen.mjs)
+export const price = (def) => 10 * def.tier + (COST_ADJ[def.id] || 0);
+export const sellPerCopy = (def) => Math.floor(price(def) / 2);
 
 // chance of each tier (1..5) showing in the shop, by day
 export const TIER_WEIGHTS = [
@@ -48,12 +49,13 @@ export const LV = {
 // flat amounts (hits, burn, heal, shield, poison, doom, regen) are compressed by tier so
 // late-game fights don't end in 5 seconds while day 1 fights still finish in time
 export const TIER_SCALE = [0, 1.6, 1.35, 1.1, 0.95, 0.85];
-export function fxValue(key, base, tier, lvl, pow = 1) {
+// def = the mon definition (tier + id for TUNE)
+export function fxValue(key, base, def, lvl, pow = 1) {
   const sc = FX[key] ? FX[key].scale : 'fx';
   if (sc === 'lvl') return base * lvl;
   const lv = sc === 'dmg' ? LV.dmg : sc === 'sec' ? LV.sec : sc === 'pct' ? LV.pct : LV.fx;
   const flat = sc === 'dmg' || sc === 'fx';
-  return base * lv[lvl] * pow * (flat ? TIER_SCALE[tier] : 1);
+  return base * lv[lvl] * pow * (flat ? TIER_SCALE[def.tier] : 1) * (TUNE[def.id] || 1);
 }
 export const TIER_POWER = [0, 10, 14, 19, 25, 32];
 export const LV_POWER = [0, 1, 1.8, 2.8];
@@ -188,15 +190,15 @@ export const MONS = [
 
   // ---------------- JUNK ----------------
   m('trashling', 'Trashling', 'junk', 1, 2.5, 3, { scrap: 1 }, {}, 'One mon\'s trash is another mon\'s treasure.'),
-  m('canrat', 'Canrat', 'junk', 1, 2, 3, {}, { salvage: 1 }, 'Brings home loose change after every fight.'),
+  m('canrat', 'Canrat', 'junk', 1, 2, 3, {}, { salvage: 3 }, 'Brings home loose change after every fight.'),
   m('binbot', 'Binbot', 'junk', 2, 3, 6, { scrap: 2 }, {}, 'Collection day is every day.'),
-  m('rustacean', 'Rustacean', 'junk', 2, 3, 7, { shield: 6 }, { salvage: 1 }, 'A crab in a rusty can. Sells the can afterwards.'),
+  m('rustacean', 'Rustacean', 'junk', 2, 3, 7, { shield: 6 }, { salvage: 3 }, 'A crab in a rusty can. Sells the can afterwards.'),
   m('dumpsterix', 'Dumpsterix', 'junk', 3, 3.5, 12, { scrap: 2 }, {}, 'Rolls in on squeaky wheels.'),
-  m('magnetick', 'Magnetick', 'junk', 3, 2.5, 7, { scrap: 1 }, { salvage: 2 }, 'Everything metal sticks to it. Including coins.'),
+  m('magnetick', 'Magnetick', 'junk', 3, 2.5, 7, { scrap: 1 }, { salvage: 6 }, 'Everything metal sticks to it. Including coins.'),
   m('crushbox', 'Crushbox', 'junk', 4, 4, 26, { scrap: 4 }, {}, 'A compactor with opinions.'),
   m('gearwolf', 'Gearwolf', 'junk', 4, 3, 10, { scrap: 2, scrapper: 100 }, {}, 'Howls at the scrap heap. Gets double from it.'),
   m('landfillion', 'Landfillion', 'junk', 5, 4.5, 46, { scrap: 5 }, {}, 'A lion made of everything you threw away.'),
-  m('recyclops', 'Recyclops', 'junk', 5, 3.5, 26, { scrap: 3 }, { start: { scrap: 5 }, salvage: 3 }, 'Sorts the waste. Keeps the good stuff.'),
+  m('recyclops', 'Recyclops', 'junk', 5, 3.5, 26, { scrap: 3 }, { start: { scrap: 5 }, salvage: 9 }, 'Sorts the waste. Keeps the good stuff.'),
 
   // ---------------- SOUND ----------------
   m('chirpip', 'Chirpip', 'sound', 1, 2.5, 3, { echo: 40 }, {}, 'Repeats whatever the mon in front just did.'),
@@ -211,6 +213,10 @@ export const MONS = [
   m('encorca', 'Encorca', 'sound', 5, 4, 28, { selfgrow: 15 }, { start: { haste: 10 } }, 'An orca rockstar. Always plays one more.'),
 ];
 export const MON = Object.fromEntries(MONS.map(x => [x.id, x]));
+// Balance knobs written by tools/balance.mjs from simulations:
+// COST_ADJ = price change per mon (-5..+5, stronger archetypes cost more); TUNE = multiplier on all of a mon's numbers.
+export const COST_ADJ = {"emberpup":2,"cindermite":3,"kilnkit":3,"flarebat":1,"pyrrhino":-4,"wickwisp":3,"magmaw":-1,"sunmoth":-1,"infernodon":-3,"phoenyx":-1,"puddlefin":3,"bubblot":3,"ripplet":2,"mistle":-3,"tidalon":-5,"krakenling":-3,"rainbeau":-5,"leviathorn":1,"aquarion":-3,"sproutle":-3,"thornbit":2,"budgeon":-2,"oakhorn":1,"lashvine":-3,"petalisk":2,"barkodile":2,"verdragon":-1,"zapling":-5,"voltmouse":-1,"sparkoon":-1,"dynamole":1,"coilbee":2,"stormlion":1,"teslug":3,"raijumbo":2,"ampharaoh":5,"frostkit":-5,"snowpeck":-4,"glaciub":2,"flurrfox":-1,"tuskfrost":5,"shiverling":-1,"blizzowl":1,"crystalynx":2,"glacierex":2,"borealis":5,"pebblet":3,"gravelump":-1,"cragcub":-1,"geodot":2,"quarrion":-2,"spikeshell":-2,"monolith":-4,"obsidrake":-3,"titanox":-1,"colossite":-4,"sludgit":1,"stinkbug":3,"toxitoad":-2,"plagueroo":-2,"belladonix":-1,"hydraxis":-3,"morbulb":-5,"mindle":1,"dozzle":-2,"psyfox":4,"trancey":-1,"cerebrox":3,"mesmeray":3,"oraclam":3,"psyclops":2,"cosmind":4,"boolet":3,"spookit":-1,"ghoulpup":-2,"wraithorn":2,"lanternik":-2,"soulsipper":-4,"phantomaw":-5,"reapurr":-5,"canrat":-5,"rustacean":-3,"dumpsterix":-2,"magnetick":-4,"crushbox":-4,"gearwolf":-3,"landfillion":-5,"chirpip":1,"drumbo":-3,"hummingbard":2,"bassloon":-4,"amplifox":3,"kazooka":-3,"banjoar":3,"maestrich":2,"encorca":5};
+export const TUNE = {"cindermite":0.983,"kilnkit":1.046,"wickwisp":0.93,"infernodon":0.897,"puddlefin":0.999,"bubblot":1.041,"mistle":0.961,"tidalon":0.968,"krakenling":1.115,"rainbeau":0.967,"aquarion":0.962,"sproutle":0.909,"budgeon":0.919,"oakhorn":0.964,"lashvine":1.032,"petalisk":0.932,"barkodile":0.99,"zapling":0.909,"coilbee":1.03,"teslug":0.916,"raijumbo":0.948,"ampharaoh":0.764,"frostkit":0.899,"snowpeck":0.943,"glaciub":0.935,"tuskfrost":0.913,"blizzowl":0.844,"crystalynx":0.901,"borealis":0.853,"pebblet":0.912,"geodot":0.986,"monolith":0.968,"obsidrake":1.072,"colossite":1.057,"stinkbug":0.988,"plagueroo":0.983,"hydraxis":1.063,"morbulb":0.96,"mindle":1.033,"psyfox":1.051,"cerebrox":0.892,"mesmeray":0.943,"oraclam":0.952,"psyclops":1.089,"cosmind":0.882,"boolet":1.107,"ghoulpup":1.014,"wraithorn":1.053,"soulsipper":1.085,"phantomaw":0.956,"reapurr":1.043,"canrat":0.989,"rustacean":0.925,"dumpsterix":1.157,"magnetick":1.048,"crushbox":0.896,"gearwolf":0.962,"landfillion":1.091,"drumbo":0.993,"bassloon":1.048,"amplifox":0.918,"kazooka":1.018,"banjoar":0.859,"maestrich":0.965,"encorca":1.237,"emberpup":0.946,"sunmoth":1.029,"phoenyx":0.914,"ripplet":1.038,"corallis":1.048,"leviathorn":1.115,"elderoot":0.979,"verdragon":0.869,"voltmouse":0.937,"sparkoon":0.98,"dynamole":0.989,"shiverling":1.077,"glacierex":0.82,"gravelump":1.046,"cragcub":1.012,"spikeshell":1.017,"titanox":1.139,"fungloom":1.002,"miasmite":0.863,"belladonix":1.028,"dozzle":1.008,"trancey":1.063,"sphinxie":1.192,"wisplet":1.045,"spookit":0.98,"binbot":1.069,"recyclops":1.275,"hummingbard":1.005,"symphonix":0.896,"leaflynx":0.89,"flurrfox":1.069,"sludgit":0.967,"toxitoad":0.904,"lanternik":0.934,"trashling":0.978,"magmaw":1.09,"thunderam":0.966,"stormlion":0.869,"quarrion":0.996,"banshriek":1.02,"flarebat":0.966,"thornbit":1.036,"chirpip":0.986,"pyrrhino":0.977};
 
 // Effect metadata: icon, label, and how levels scale it.
 export const FX = {
@@ -259,44 +265,95 @@ export const RANKS = [
   { name: 'Platinum', icon: '💠', color: '#7fe3d4' },
   { name: 'Diamond', icon: '💎', color: '#8ad8ff' },
 ];
-export const RANK_STEP = 100;
-export const RP = { win: 20, loss: -15, champion: 40 };
+// Ranked: the run's final win count moves your rank once the run ends.
+export const RANK_RULE = { up: 6, stay: 5 }; // 6+ wins: up one rank, exactly 5: stay, under 5: down one
+export const rankDelta = (wins) => wins >= RANK_RULE.up ? 1 : wins === RANK_RULE.stay ? 0 : -1;
 
 export const AVATARS = [
   { id: 'captain', name: 'Captain Brawn', face: '🧔', perk: 'Team HP +15%.' },
-  { id: 'merchant', name: 'Merchant Mira', face: '👩‍💼', perk: '+2 gold every day.' },
+  { id: 'merchant', name: 'Merchant Mira', face: '👩‍💼', perk: '+8 gold every day.' },
   { id: 'scholar', name: 'Scholar Quill', face: '🧑‍🎓', perk: 'Shop shows 6 offers instead of 5.' },
   { id: 'breeder', name: 'Breeder Bea', face: '👩‍🌾', perk: 'Every merge adds +10% ATK and POW.' },
   { id: 'coach', name: 'Coach Kip', face: '🧢', perk: 'Your front mon (slot 1) gets +30% ATK and POW.' },
   { id: 'gambler', name: 'Gambler Dex', face: '🎩', perk: 'First reroll each day is free.' },
-  { id: 'mystic', name: 'Mystic Oona', face: '🧙‍♀️', perk: 'Start the run with a random trinket.' },
-  { id: 'junkyard', name: 'Junkyard Jo', face: '👷', perk: 'Selling gives +1 gold per copy. Junk always in the run.' },
+  { id: 'mystic', name: 'Mystic Oona', face: '🧙‍♀️', perk: 'Start the run with a random tier 2 trinket.' },
+  { id: 'junkyard', name: 'Junkyard Jo', face: '👷', perk: 'Selling gives +3 gold per copy. Junk always in the run.' },
   { id: 'tamer', name: 'Tamer Rex', face: '🤠', perk: 'Start with 2 random tier 1 mons.' },
 ];
 export const AVATAR = Object.fromEntries(AVATARS.map(a => [a.id, a]));
 
+// Trinkets have tiers 1-5. Merging a tier X mon offers 3 tier X trinkets; events offer trinkets of the shop's top tier.
+// fx keys: dmg (hit %), speed (%), hp (%), fxp (effect power %), shield (start shield % HP), open (speed % first 4s),
+// sd (sudden death drain cut %), slot1/slot6 (ATK+POW % for that slot), rage (hit % while under 50% HP),
+// wind (once: heal % HP at <30%), type:{type:%} (ATK+POW for that type), goldDay, winGold, bench, rerolls, copy (shop copy chance %), offers
+const tk = (id, tier, name, icon, desc, fx) => ({ id, tier, name, icon, desc, fx });
 export const TRINKETS = [
-  { id: 'whetstone', name: 'Whetstone', icon: '🗡️', desc: 'All your hits deal +10% damage.' },
-  { id: 'hourglass', name: 'Hourglass', icon: '⏳', desc: 'Your team acts 8% faster.' },
-  { id: 'thickhide', name: 'Thick Hide', icon: '🦏', desc: 'Team HP +15%.' },
-  { id: 'prism', name: 'Prism', icon: '🔷', desc: 'All type effects +20% (not hits).' },
-  { id: 'openingact', name: 'Opening Act', icon: '🎬', desc: 'Your team acts 50% faster during the first 4 seconds.' },
-  { id: 'overtime', name: 'Overtime Boots', icon: '🥾', desc: 'Take 50% less sudden death drain.' },
-  { id: 'leaderbadge', name: 'Leader Badge', icon: '🎖️', desc: 'Slot 1 mon gets +35% ATK and POW.' },
-  { id: 'rearguard', name: 'Rear Guard', icon: '🛡️', desc: 'Slot 6 mon gets +35% ATK and POW.' },
-  { id: 'warmblanket', name: 'Warm Blanket', icon: '🧣', desc: 'Start every battle with a shield of 10% team HP.' },
-  { id: 'fatwallet', name: 'Fat Wallet', icon: '👛', desc: '+2 gold every day.' },
-  { id: 'backpack', name: 'Big Backpack', icon: '🎒', desc: '+2 bench slots.' },
-  { id: 'dice', name: 'Loaded Dice', icon: '🎲', desc: '1 free reroll every day.' },
-  { id: 'goldenegg', name: 'Golden Egg', icon: '🥚', desc: '+2 gold after every win.' },
-  { id: 'luckycollar', name: 'Lucky Collar', icon: '🍀', desc: 'Copies of your mons show up in the shop more often.' },
+  // tier 1
+  tk('whetstone', 1, 'Whetstone', '🗡️', 'Your hits deal +6% damage.', { dmg: 6 }),
+  tk('sneakers', 1, 'Sneakers', '👟', 'Your team acts 4% faster.', { speed: 4 }),
+  tk('lunchbox', 1, 'Lunchbox', '🍱', 'Team HP +6%.', { hp: 6 }),
+  tk('pebblecharm', 1, 'Pebble Charm', '🪨', 'Start each battle with a shield of 5% team HP.', { shield: 5 }),
+  tk('coinpurse', 1, 'Coin Purse', '🪙', '+4 gold every day.', { goldDay: 4 }),
+  tk('clover', 1, 'Lucky Clover', '🍀', 'Copies of your mons show up in the shop more often.', { copy: 10 }),
+  // tier 2
+  tk('hourglass', 2, 'Hourglass', '⏳', 'Your team acts 7% faster.', { speed: 7 }),
+  tk('thickhide', 2, 'Thick Hide', '🦏', 'Team HP +12%.', { hp: 12 }),
+  tk('prism', 2, 'Prism', '🔷', 'All type effects +12% (not hits).', { fxp: 12 }),
+  tk('leaderbadge', 2, 'Leader Badge', '🎖️', 'Slot 1 mon gets +30% ATK and POW.', { slot1: 30 }),
+  tk('fatwallet', 2, 'Fat Wallet', '👛', '+8 gold every day.', { goldDay: 8 }),
+  tk('dice', 2, 'Loaded Dice', '🎲', '1 free reroll every day.', { rerolls: 1 }),
+  // tier 3 (+ one type charm per type, generated below)
+  tk('spikedcollar', 3, 'Spiked Collar', '⛓️', 'Your hits deal +12% damage.', { dmg: 12 }),
+  tk('openingact', 3, 'Opening Act', '🎬', 'Your team acts 50% faster during the first 4 seconds.', { open: 50 }),
+  tk('rearguard', 3, 'Rear Guard', '🛡️', 'Slot 6 mon gets +40% ATK and POW.', { slot6: 40 }),
+  tk('warmblanket', 3, 'Warm Blanket', '🧣', 'Start each battle with a shield of 12% team HP.', { shield: 12 }),
+  tk('overtime', 3, 'Overtime Boots', '🥾', 'Take 50% less sudden death drain.', { sd: 50 }),
+  tk('goldenegg', 3, 'Golden Egg', '🥚', '+10 gold after every win.', { winGold: 10 }),
+  tk('backpack', 3, 'Big Backpack', '🎒', '+2 bench slots.', { bench: 2 }),
+  // tier 4
+  tk('wardrum', 4, 'War Drum', '🥁', 'Your team acts 12% faster.', { speed: 12 }),
+  tk('heartlocket', 4, 'Heart Locket', '💗', 'Team HP +22%.', { hp: 22 }),
+  tk('crystalball', 4, 'Crystal Ball', '🔮', 'All type effects +25% (not hits).', { fxp: 25 }),
+  tk('secondwind', 4, 'Second Wind', '🌬️', 'Once per battle, heal 15% team HP when under 30%.', { wind: 15 }),
+  tk('berserker', 4, 'Berserker Mask', '👺', 'Your hits deal +30% damage while under 50% HP.', { rage: 30 }),
+  tk('treasuremap', 4, 'Treasure Map', '🗺️', 'The shop shows 1 more offer.', { offers: 1 }),
+  // tier 5
+  tk('crown', 5, 'Crown of Kings', '👑', 'Hits +15%, type effects +15%, team HP +10%.', { dmg: 15, fxp: 15, hp: 10 }),
+  tk('timeturner', 5, 'Time Turner', '⌛', 'Your team acts 18% faster.', { speed: 18 }),
+  tk('phoenixfeather', 5, 'Phoenix Feather', '🪶', 'Once per battle, heal 30% team HP when under 30%.', { wind: 30 }),
+  tk('dragonscale', 5, 'Dragon Scale', '🐉', 'Team HP +10% and start with a shield of 25% team HP.', { hp: 10, shield: 25 }),
+  tk('elementalorb', 5, 'Elemental Orb', '🌈', 'All type effects +40% (not hits).', { fxp: 40 }),
+  tk('goldengoose', 5, 'Golden Goose', '🪿', '+15 gold every day and +10 after every win.', { goldDay: 15, winGold: 10 }),
 ];
+for (const t of Object.keys(TYPES)) TRINKETS.push(tk('charm_' + t, 3, `${TYPES[t].name} Charm`, TYPES[t].icon, `Your ${TYPES[t].name} mons get +30% ATK and POW.`, { type: { [t]: 30 } }));
 export const TRINKET = Object.fromEntries(TRINKETS.map(t => [t.id, t]));
-export const BATTLE_TRINKETS = ['whetstone', 'hourglass', 'thickhide', 'prism', 'openingact', 'overtime', 'leaderbadge', 'rearguard', 'warmblanket'];
+export const ECON_KEYS = ['goldDay', 'winGold', 'bench', 'rerolls', 'copy', 'offers'];
+export const isBattleTrinket = (id) => TRINKET[id] && Object.keys(TRINKET[id].fx).some(k => !ECON_KEYS.includes(k));
+// Sum of all trinket effects (charms merge per type)
+export function trinketBonus(ids) {
+  const b = { type: {} };
+  for (const id of ids || []) {
+    const t = TRINKET[id]; if (!t) continue;
+    for (const [k, v] of Object.entries(t.fx)) {
+      if (k === 'type') for (const [ty, x] of Object.entries(v)) b.type[ty] = (b.type[ty] || 0) + x;
+      else b[k] = (b[k] || 0) + v;
+    }
+  }
+  return b;
+}
 
 export const BOT_NAMES = ['Ash Tray', 'Misty Window', 'Brock Lee', 'Gary Oakley', 'Professor Elm Street', 'Nurse Jolene', 'Team Rocket Science', 'Lass Vegas', 'Youngster Joey', 'Bug Catcher Bob', 'Hiker Mike', 'Swimmer Sue', 'Picnicker Pam', 'Cool Trainer Kai', 'Ace Ventura', 'Super Nerd Ned', 'Fisher Price', 'Biker Bart', 'Gentleman Jim', 'Beauty Bella', 'Psychic Sam', 'Blackbelt Bo', 'Juggler Jules', 'Rancher Rita', 'Tamer Tina', 'Ranger Rick', 'Burglar Barry', 'Scientist Sid', 'Sailor Sal', 'Camper Cam', 'Dragon Tamer Dot', 'Old Man Pete', 'Twin Tia & Tea', 'Cue Ball Carl', 'Rocker Roxy', 'Medium Maud', 'Channeler Chan', 'Bird Keeper Birdie', 'Artist Arturo', 'Collector Colin'];
 
 export const CHANGELOG = [
+  { v: '0.2', date: '2026-11-25', notes: [
+    'Merge rewards: every merge offers a pick of 3 trinkets of the merged mon\'s tier. Trinkets now have tiers 1-5 (37 trinkets, incl. a Charm for each type).',
+    'Prices are now about 10 × tier, ±5 by how strong each mon is. Income, rerolls, selling and event gold were rescaled to match.',
+    'Ranked: your rank moves when the run ends. 6+ wins rank up, 5 holds, under 5 ranks down.',
+    'Battle button asks for confirmation (and warns about empty slots or unspent gold).',
+    'New art: every type has its own body shapes (flames, fish, crystals, golems, slimes, jellyfish, trash cans, speakers...).',
+    'Rebalanced every mon with 3,000+ simulated runs, including bots that hunt for the strongest mons.',
+    'Old v0.1 runs in progress were reset (rank carried over).',
+  ] },
   { v: '0.1', date: '2026-11-25', notes: [
     'First playable: 11 types, 110 mons (2 per type per tier), 9 avatars, 14 trinkets, 12 event kinds.',
     'Days: event → shop → one 30 second battle against a same-day snapshot. Sudden death after 30s.',

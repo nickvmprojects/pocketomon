@@ -1,25 +1,26 @@
 // Pocketomon run logic: days, events, shop, merging, snapshots. Pure state functions
 // (the UI and the bot simulator both use them). Randomness comes from run.rs (saved).
 import {
-  RULES, MON, MONS, TYPE_KEYS, AVATARS, AVATAR, TRINKETS, TRINKET, BATTLE_TRINKETS,
+  RULES, MON, MONS, TYPE_KEYS, AVATARS, AVATAR, TRINKETS, TRINKET, isBattleTrinket, trinketBonus,
   teamHp, income, price, sellPerCopy, tierWeights, maxTier, TIER_POWER, LV_POWER,
-} from './data.js';
-import { makeRng, hash } from './rng.js';
+} from './data.js?v=0.2';
+import { makeRng, hash } from './rng.js?v=0.2';
 
 export function rngOf(run) { const r = makeRng(run.rs); return r; }
 function save(run, r) { run.rs = r.state(); }
 
-export const benchSize = (run) => RULES.benchSlots + (run.trinkets.includes('backpack') ? 2 : 0);
-export const shopSize = (run) => RULES.shopSlots + (run.avatar === 'scholar' ? 1 : 0);
-export const offerPrice = (run, def) => Math.max(1, price(def.tier) - (run.sale ? 1 : 0));
+export const bonusOf = (run) => trinketBonus(run.trinkets);
+export const benchSize = (run) => RULES.benchSlots + (bonusOf(run).bench || 0);
+export const shopSize = (run) => RULES.shopSlots + (run.avatar === 'scholar' ? 1 : 0) + (bonusOf(run).offers || 0);
+export const offerPrice = (run, def) => Math.max(1, price(def) - (run.sale ? 5 : 0));
 
 export function newRun(mode, seed = (Date.now() ^ Math.floor(Math.random() * 1e9)) >>> 0) {
   const r = makeRng(seed);
   const run = {
-    v: 1, mode, seed, rs: 0, day: 1, gold: 0, lives: RULES.startLives, wins: 0, losses: 0,
+    v: 2, mode, seed, rs: 0, day: 1, gold: 0, lives: RULES.startLives, wins: 0, losses: 0,
     avatar: null, trinkets: [], types: r.shuffle(TYPE_KEYS).slice(0, RULES.typesPerRun),
     team: Array(RULES.teamSlots).fill(null), bench: Array(RULES.benchSlots).fill(null), shop: [],
-    freeRerolls: 0, rerollBank: 0, hpBonus: 0, sale: false, uid: 1,
+    freeRerolls: 0, rerollBank: 0, hpBonus: 0, sale: false, uid: 1, trinketQueue: [],
     phase: 'event', event: null, history: [], log: [],
   };
   run.rs = r.state();
@@ -43,10 +44,11 @@ export function startDay(run) {
   const r = rngOf(run);
   run.sale = false;
   let g = income(run.day);
-  if (run.avatar === 'merchant') g += 2;
-  if (run.trinkets.includes('fatwallet')) g += 2;
+  const b = bonusOf(run);
+  if (run.avatar === 'merchant') g += 8;
+  g += b.goldDay || 0;
   run.gold += g;
-  run.freeRerolls = (run.avatar === 'gambler' ? 1 : 0) + (run.trinkets.includes('dice') ? 1 : 0);
+  run.freeRerolls = (run.avatar === 'gambler' ? 1 : 0) + (b.rerolls || 0);
   while (run.bench.length < benchSize(run)) run.bench.push(null);
   rollShop(run, r, true);
   run.event = makeEvent(run, r);
@@ -67,7 +69,7 @@ export function rollShop(run, r, keepLocked) {
 
 function drawMonId(run, r) {
   const mt = maxTier(run.day);
-  const bias = RULES.copyBias + (run.trinkets.includes('luckycollar') ? 0.15 : 0);
+  const bias = RULES.copyBias + (bonusOf(run).copy || 0) / 100;
   if (r() < bias) {
     const mine = owned(run).filter(o => o.m.lvl < 3 && MON[o.m.id].tier <= mt);
     if (mine.length) return r.pick(mine).m.id;
@@ -103,7 +105,7 @@ function eventAllowed(run, kind) {
   const mt = maxTier(run.day);
   switch (kind) {
     case 'egg': return mt < 5;
-    case 'trinket': return run.trinkets.length < TRINKETS.length;
+    case 'trinket': return trinketPool(run, maxTier(run.day)).length > 0;
     case 'clone': return run.day >= 3;
     case 'revive': return run.lives < RULES.startLives;
     case 'hp': return run.day >= 2;
@@ -115,20 +117,29 @@ function buildChoice(run, kind, r) {
   const mt = maxTier(run.day);
   const pickMon = (tier) => r.pick(MONS.filter(x => x.tier === tier && run.types.includes(x.type))).id;
   switch (kind) {
-    case 'gold': { const g = 3 + Math.floor(run.day / 2); return { kind, icon: '💰', title: `Found ${g} gold`, desc: `A pouch of coins on the trail. +${g} gold now.`, g }; }
+    case 'gold': { const g = 10 + 3 * run.day; return { kind, icon: '💰', title: `Found ${g} gold`, desc: `A pouch of coins on the trail. +${g} gold now.`, g }; }
     case 'wild': { const tier = Math.max(1, mt - r.int(2)); const id = pickMon(tier); return { kind, icon: '🌾', title: `Wild ${MON[id].name}`, desc: `A tier ${tier} ${MON[id].name} wants to join (free).`, id, needsRoom: true }; }
     case 'egg': { const id = pickMon(mt + 1); return { kind, icon: '🥚', title: 'Mystery egg', desc: `Hatches right away into a random tier ${mt + 1} mon (above the shop!).`, id, needsRoom: true }; }
     case 'train': return { kind, icon: '🏋️', title: 'Training camp', desc: 'Pick a mon: +20% ATK, permanently.', needsTarget: true };
     case 'meditate': return { kind, icon: '🧘', title: 'Meditation retreat', desc: 'Pick a mon: +20% POW (effect power), permanently.', needsTarget: true };
-    case 'trinket': { const t = r.pick(TRINKETS.filter(x => !run.trinkets.includes(x.id))); return { kind, icon: t.icon, title: t.name, desc: `Trinket for this run: ${t.desc}`, id: t.id }; }
+    case 'trinket': { const t = r.pick(trinketPool(run, mt)); return { kind, icon: t.icon, title: t.name, desc: `Tier ${t.tier} trinket: ${t.desc}`, id: t.id }; }
     case 'hp': return { kind, icon: '❤️‍🩹', title: 'Hot springs', desc: 'Team HP +10% for the rest of the run.' };
     case 'rerolls': return { kind, icon: '🎲', title: 'Bag of dice', desc: '+4 free rerolls (kept until used).' };
-    case 'sale': return { kind, icon: '🏷️', title: 'Shop sale', desc: 'Every mon costs 1 gold less today.' };
+    case 'sale': return { kind, icon: '🏷️', title: 'Shop sale', desc: 'Every mon costs 5 gold less today.' };
     case 'clone': return { kind, icon: '🧪', title: 'Cloning vat', desc: 'Pick a level 1 mon: get an identical copy (merges count!).', needsTarget: true, targetLvl1: true };
-    case 'gamble': return { kind, icon: '🪙', title: 'Coin flip', desc: 'Heads: +9 gold. Tails: lose 3 gold.' };
+    case 'gamble': return { kind, icon: '🪙', title: 'Coin flip', desc: 'Heads: +30 gold. Tails: lose 10 gold.' };
     case 'revive': return { kind, icon: '💖', title: 'Lucky charm', desc: 'Regain 1 life.' };
   }
   return { kind: 'gold', icon: '💰', title: '2 gold', desc: '+2 gold', g: 2 };
+}
+
+// Can this owned mon be the target of event choice c?
+export function validTarget(run, c, m) {
+  if (!m) return false;
+  if (c.targetLvl1 && m.lvl !== 1) return false;
+  if (c.kind === 'clone' && !run.team.includes(null) && !run.bench.includes(null))
+    return owned(run).filter(x => x.m.id === m.id && x.m.lvl === 1).length >= 2;
+  return true;
 }
 
 export function choiceBlocked(run, c) {
@@ -154,7 +165,7 @@ export function chooseEvent(run, idx, target) {
   switch (c.kind) {
     case 'avatar': {
       run.avatar = c.id;
-      if (c.id === 'mystic') { const t = r.pick(TRINKETS); run.trinkets.push(t.id); msg = `Oona found a ${t.name}!`; while (run.bench.length < benchSize(run)) run.bench.push(null); }
+      if (c.id === 'mystic') { const t = r.pick(trinketPool(run, 2)); run.trinkets.push(t.id); msg = `Oona found a ${t.name}!`; while (run.bench.length < benchSize(run)) run.bench.push(null); }
       if (c.id === 'junkyard' && !run.types.includes('junk')) run.types[r.int(run.types.length)] = 'junk';
       if (c.id === 'tamer') for (let k = 0; k < 2; k++) addMon(run, rollInst(run, r.pick(MONS.filter(x => x.tier === 1 && run.types.includes(x.type))).id, r));
       if (c.id === 'scholar' || c.id === 'junkyard') rollShop(run, r, true);
@@ -180,7 +191,7 @@ export function chooseEvent(run, idx, target) {
     case 'hp': run.hpBonus = +(run.hpBonus + 0.1).toFixed(2); msg = 'Team HP +10%'; break;
     case 'rerolls': run.rerollBank += 4; msg = '+4 free rerolls'; break;
     case 'sale': run.sale = true; msg = 'Sale today!'; break;
-    case 'gamble': if (r() < 0.5) { run.gold += 9; msg = 'Heads! +9 gold'; } else { run.gold = Math.max(0, run.gold - 3); msg = 'Tails... -3 gold'; } break;
+    case 'gamble': if (r() < 0.5) { run.gold += 30; msg = 'Heads! +30 gold'; } else { run.gold = Math.max(0, run.gold - 10); msg = 'Tails... -10 gold'; } break;
     case 'revive': run.lives = Math.min(RULES.startLives, run.lives + 1); msg = '+1 life'; break;
   }
   save(run, r);
@@ -218,6 +229,7 @@ export function addMon(run, inst, dest) {
     for (const p of parts) slotsOf(run, p.zone)[p.i] = null;
     let merged = mergeInsts(run, [parts[0].m, parts[1].m, inst]);
     slotsOf(run, into.zone)[into.i] = merged;
+    queueTrinket(run, MON[inst.id].tier);
     const lvl3 = checkL3(run, merged, into);
     return { ok: true, merged: lvl3 ? 3 : 2, at: lvl3 || into };
   }
@@ -239,7 +251,41 @@ function checkL3(run, m, at) {
   slotsOf(run, here.zone)[here.i] = null;
   slotsOf(run, other.zone)[other.i] = null;
   slotsOf(run, into.zone)[into.i] = mergeInsts(run, [m, other.m]);
+  queueTrinket(run, MON[m.id].tier);
   return into;
+}
+
+// ---------------- merge rewards: pick 1 of 3 trinkets of the merged mon's tier ----------------
+export function trinketPool(run, tier) {
+  return TRINKETS.filter(t => t.tier === tier && !run.trinkets.includes(t.id) && (!t.id.startsWith('charm_') || run.types.includes(t.id.slice(6))));
+}
+function queueTrinket(run, tier) { (run.trinketQueue = run.trinketQueue || []).push({ tier, options: null }); }
+
+// Fills in the options of the first queued reward (lazily, so it uses the run's saved RNG once).
+export function currentTrinketChoice(run) {
+  const q = run.trinketQueue && run.trinketQueue[0];
+  if (!q) return null;
+  if (!q.options) {
+    const r = rngOf(run);
+    let pool = r.shuffle(trinketPool(run, q.tier));
+    for (const d of [-1, 1, -2, 2, -3, 3, -4, 4]) {
+      if (pool.length >= 3) break;
+      const t = q.tier + d;
+      if (t >= 1 && t <= 5) pool = pool.concat(r.shuffle(trinketPool(run, t)).filter(x => !pool.includes(x)));
+    }
+    q.options = pool.slice(0, 3).map(t => t.id);
+    save(run, r);
+    if (!q.options.length) { run.trinketQueue.shift(); return currentTrinketChoice(run); }
+  }
+  return q;
+}
+export function chooseTrinket(run, id) {
+  const q = currentTrinketChoice(run);
+  if (!q || !q.options.includes(id)) return { ok: false, msg: 'Not an option' };
+  run.trinkets.push(id);
+  run.trinketQueue.shift();
+  while (run.bench.length < benchSize(run)) run.bench.push(null);
+  return { ok: true, msg: `Got ${TRINKET[id].name}!` };
 }
 
 // ---------------- shop actions ----------------
@@ -256,7 +302,7 @@ export function buy(run, shopIdx, dest) {
   return { ok: true, merged: res.merged, at: res.at, msg: res.merged ? `${def.name} reached level ${res.merged}!` : `Bought ${def.name}` };
 }
 
-export function sellValue(run, m) { return sellPerCopy(MON[m.id].tier) * (m.copies || 1) + (run.avatar === 'junkyard' ? (m.copies || 1) : 0); }
+export function sellValue(run, m) { return (sellPerCopy(MON[m.id]) + (run.avatar === 'junkyard' ? 3 : 0)) * (m.copies || 1); }
 
 export function sell(run, zone, i) {
   const slots = slotsOf(run, zone);
@@ -276,7 +322,7 @@ export function move(run, from, to) {
 export function rerollCostNow(run) { return (run.freeRerolls > 0 || run.rerollBank > 0) ? 0 : RULES.rerollCost; }
 export function reroll(run) {
   const c = rerollCostNow(run);
-  if (run.gold < c) return { ok: false, msg: 'Need 1 gold' };
+  if (run.gold < c) return { ok: false, msg: `Need ${c} gold` };
   if (run.freeRerolls > 0) run.freeRerolls--; else if (run.rerollBank > 0) run.rerollBank--; else run.gold -= c;
   const r = rngOf(run); rollShop(run, r, true); save(run, r);
   return { ok: true };
@@ -285,22 +331,23 @@ export function toggleLock(run, i) { if (run.shop[i] && run.shop[i].mon) run.sho
 
 // ---------------- battle prep ----------------
 export function hpMult(hpBonus, avatar, trinkets) {
-  return 1 + (hpBonus || 0) + (avatar === 'captain' ? 0.15 : 0) + (trinkets.includes('thickhide') ? 0.15 : 0);
+  return 1 + (hpBonus || 0) + (avatar === 'captain' ? 0.15 : 0) + (trinketBonus(trinkets).hp || 0) / 100;
 }
 export const maxHpFor = (day, hpBonus, avatar, trinkets) => Math.round(teamHp(day) * hpMult(hpBonus, avatar, trinkets));
 
 export function teamPower(team, hpBonus, avatar, trinkets) {
   let p = 0;
   for (const m of team) if (m) p += TIER_POWER[MON[m.id].tier] * LV_POWER[m.lvl] * (m.atk + m.pow) / 2;
-  const bt = trinkets.filter(t => BATTLE_TRINKETS.includes(t) && t !== 'thickhide').length;
-  return Math.round(p * hpMult(hpBonus, avatar, trinkets) * (1 + 0.04 * bt) * (avatar === 'coach' && team[0] ? 1.05 : 1));
+  // battle trinkets add 1.5% power per trinket tier (HP trinkets already count through hpMult)
+  const bt = trinkets.filter(t => isBattleTrinket(t)).reduce((a, t) => a + TRINKET[t].tier, 0);
+  return Math.round(p * hpMult(hpBonus, avatar, trinkets) * (1 + 0.015 * bt) * (avatar === 'coach' && team[0] ? 1.05 : 1));
 }
 export const runPower = (run) => teamPower(run.team, run.hpBonus, run.avatar, run.trinkets);
 
 export function snapshot(run, name) {
   return {
     name, day: run.day, wins: run.wins, losses: run.losses, avatar: run.avatar,
-    trinkets: run.trinkets.filter(t => BATTLE_TRINKETS.includes(t)), hpBonus: run.hpBonus,
+    trinkets: run.trinkets.filter(t => isBattleTrinket(t)), hpBonus: run.hpBonus,
     team: run.team.map(m => m ? { id: m.id, lvl: m.lvl, atk: m.atk, pow: m.pow } : null),
     power: runPower(run),
   };
@@ -320,7 +367,7 @@ export function finishBattle(run, won, opp) {
   const sum = { won, day: run.day, gold: 0 };
   if (won) run.wins++; else { run.losses++; run.lives--; }
   sum.salvage = salvageGold(run);
-  sum.egg = won && run.trinkets.includes('goldenegg') ? 2 : 0;
+  sum.egg = won ? (bonusOf(run).winGold || 0) : 0;
   run.gold += sum.salvage + sum.egg;
   run.history.push({ day: run.day, won, opp: opp ? opp.name : '?', oppPower: opp ? opp.power : 0, power: runPower(run) });
   if (run.wins >= RULES.winsToChampion) { run.phase = 'over'; run.result = 'champion'; }

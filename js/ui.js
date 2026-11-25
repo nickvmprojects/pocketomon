@@ -1,9 +1,9 @@
 // Pocketomon UI: title, events, shop, battle replay, run end. Mobile first, tap to select.
-import * as D from './data.js';
-import * as R from './run.js';
-import { simulate } from './battle.js';
-import { monSvg } from './art.js';
-import { LIBRARY } from './snapdata.js';
+import * as D from './data.js?v=0.2';
+import * as R from './run.js?v=0.2';
+import { simulate } from './battle.js?v=0.2';
+import { monSvg } from './art.js?v=0.2';
+import { LIBRARY } from './snapdata.js?v=0.2';
 
 const { MON, TYPES, FX, RULES } = D;
 const $app = document.getElementById('app');
@@ -14,15 +14,17 @@ const KEY_RUN = 'pocketomon.run.v1', KEY_PROF = 'pocketomon.profile.v1';
 const load = (k) => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
 const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* private mode */ } };
 let run = load(KEY_RUN);
-if (run && run.v !== 1) run = null;
-let prof = Object.assign({ rp: 0, peakRp: 0, runs: 0, champs: 0, bestWins: 0, speed: 2, seen: '' }, load(KEY_PROF) || {});
+if (run && run.v !== 2) run = null; // v0.1 saves used the old trinkets/prices
+let prof = Object.assign({ rp: 0, runs: 0, champs: 0, bestWins: 0, speed: 2, seen: '' }, load(KEY_PROF) || {});
+if (prof.rank === undefined) prof.rank = Math.min(D.RANKS.length - 1, Math.floor((prof.rp || 0) / 100)); // migrate v0.1 RP
+prof.peakRank = Math.max(prof.peakRank || 0, prof.rank);
 let ui = { screen: run && run.phase !== 'over' ? 'run' : 'title', sel: null, pending: null, battle: null, dexType: 'fire' };
 
 const saveRun = () => store(KEY_RUN, run);
 const saveProf = () => store(KEY_PROF, prof);
 const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const fmt = (n) => (Math.abs(n) >= 10 ? Math.round(n) : Math.round(n * 10) / 10);
-const rankOf = (rp) => Math.min(D.RANKS.length - 1, Math.floor(rp / D.RANK_STEP));
+const SPLASHES = ['Now with blackjack. And hookers.', 'Gotta merge \'em all!', 'Ties go to you. Always.', '100% organic, free-range mons', 'Sudden death is just a suggestion', 'Recycle your trash mons!'];
 
 let toastT = 0;
 function toast(msg) {
@@ -33,18 +35,18 @@ function toast(msg) {
 
 // ---------------------------------------------------------------- shared bits
 function moveChips(def, lvl = 1, atk = 1, pow = 1) {
-  const out = [`<span class="chip" title="Hit">💥 ${fmt(D.fxValue('dmg', def.dmg, def.tier, lvl, atk))}</span>`];
+  const out = [`<span class="chip" title="Hit">💥 ${fmt(D.fxValue('dmg', def.dmg, def, lvl, atk))}</span>`];
   for (const [k, v] of Object.entries(def.fx)) {
     const meta = FX[k]; if (!meta) continue;
-    let x = D.fxValue(k, v, def.tier, lvl, pow);
+    let x = D.fxValue(k, v, def, lvl, pow);
     if (D.ECHO_KEYS.includes(k)) x = Math.min(125, x);
     out.push(`<span class="chip" title="${meta.label}">${meta.icon} ${meta.label} ${fmt(x)}${meta.unit || ''}</span>`);
   }
   const p = def.pas;
-  if (p.start) for (const [k, v] of Object.entries(p.start)) out.push(`<span class="chip pas">Start: ${FX[k].icon} ${FX[k].label} ${fmt(D.fxValue(k, v, def.tier, lvl, pow))}${FX[k].unit || ''}</span>`);
-  if (p.regen) out.push(`<span class="chip pas">✨ Regen ${fmt(D.fxValue('regen', p.regen, def.tier, lvl, pow))}/s</span>`);
+  if (p.start) for (const [k, v] of Object.entries(p.start)) out.push(`<span class="chip pas">Start: ${FX[k].icon} ${FX[k].label} ${fmt(D.fxValue(k, v, def, lvl, pow))}${FX[k].unit || ''}</span>`);
+  if (p.regen) out.push(`<span class="chip pas">✨ Regen ${fmt(D.fxValue('regen', p.regen, def, lvl, pow))}/s</span>`);
   if (p.salvage) out.push(`<span class="chip pas">🪙 +${p.salvage * lvl} gold after battle</span>`);
-  if (p.rebirth) out.push(`<span class="chip pas">🪶 Once: heal ${fmt(D.fxValue('rebirth', p.rebirth, def.tier, lvl, pow))}% at &lt;30% HP</span>`);
+  if (p.rebirth) out.push(`<span class="chip pas">🪶 Once: heal ${fmt(D.fxValue('rebirth', p.rebirth, def, lvl, pow))}% at &lt;30% HP</span>`);
   return out.join('');
 }
 
@@ -91,7 +93,7 @@ function detail(m, ctx) {
 }
 
 function topbar() {
-  const rk = D.RANKS[rankOf(prof.rp)];
+  const rk = D.RANKS[prof.rank];
   return `<header class="topbar">
     <div class="tb-l"><span class="day">Day ${run.day}</span>${run.mode === 'ranked' ? `<span class="mode" style="color:${rk.color}">${rk.icon} Ranked</span>` : '<span class="mode">Normal</span>'}</div>
     <div class="tb-r"><span title="Gold">💰${run.gold}</span><span title="Lives">❤️${run.lives}</span><span title="Wins">🏆${run.wins}/${RULES.winsToChampion}</span>
@@ -105,7 +107,7 @@ function topbar() {
 function teamRows(opts = {}) {
   const tgt = opts.target;
   const isSel = (z, i) => ui.sel && ui.sel.zone === z && ui.sel.i === i;
-  const tOk = (m) => tgt && m && (!tgt.targetLvl1 || m.lvl === 1);
+  const tOk = (m) => tgt && R.validTarget(run, tgt, m);
   return `<h3>Team <span class="dim">· acts in slot order, left first</span></h3>
     <div class="row6">${run.team.map((m, i) => card(m, { zone: 'team', i, sel: isSel('team', i), label: i + 1, target: tOk(m) })).join('')}</div>
     <h3>Bench <span class="dim">· doesn't fight</span></h3>
@@ -122,19 +124,22 @@ function render() {
   return renderShop();
 }
 
+let splashI = 0;
+const PARADE = D.TYPE_KEYS.map(t => D.MONS.filter(m => m.type === t)[Math.floor(Math.random() * 10)].id).sort(() => Math.random() - 0.5).slice(0, 6);
 function renderTitle() {
-  const ri = rankOf(prof.rp), rk = D.RANKS[ri];
-  const into = prof.rp - ri * D.RANK_STEP;
+  const ri = prof.rank, rk = D.RANKS[ri];
   const canContinue = run && run.phase !== 'over';
   const seenNew = prof.seen === D.VERSION;
   $app.innerHTML = `<div class="title">
-    <div class="logo">POCKET<span>O</span>MON</div>
+    <div class="logowrap"><div class="logo">POCKET<span>O</span>MON</div>
+    <div class="splash" data-act="splash">${esc(SPLASHES[splashI % SPLASHES.length])}</div></div>
     <div class="tag">Buy mons. Merge mons. 30 second showdowns.</div>
-    <div class="parade">${['emberpup', 'puddlefin', 'sproutle', 'zapling', 'boolet', 'trashling'].map(id => `<div>${monSvg(id)}</div>`).join('')}</div>
+    <div class="parade">${PARADE.map(id => `<div>${monSvg(id)}</div>`).join('')}</div>
     <div class="rankbox" style="--rc:${rk.color}">
-      <div class="rk-name">${rk.icon} ${rk.name}${ri === D.RANKS.length - 1 ? ` · ${prof.rp} RP` : ''}</div>
-      ${ri < D.RANKS.length - 1 ? `<div class="bar"><div style="width:${into}%"></div></div><div class="sub">${into}/100 RP to ${D.RANKS[ri + 1].name}</div>` : '<div class="sub">Top rank!</div>'}
-      <div class="sub">Runs ${prof.runs} · Champion ${prof.champs}× · Best ${prof.bestWins} wins</div>
+      <div class="rk-name">${rk.icon} ${rk.name}</div>
+      <div class="ladder">${D.RANKS.map((r, i) => `<span class="${i === ri ? 'on' : i < ri ? 'past' : ''}" title="${r.name}">${r.icon}</span>`).join('')}</div>
+      <div class="sub">Ranked runs: 6+ wins rank up · 5 holds · under 5 ranks down</div>
+      <div class="sub">Runs ${prof.runs} · Champion ${prof.champs}× · Best ${prof.bestWins} wins · Peak ${D.RANKS[prof.peakRank].icon}</div>
     </div>
     <div class="menu">
       ${canContinue ? `<button class="primary big" data-act="continue">▶ Continue (Day ${run.day}, ${run.mode})</button>` : ''}
@@ -172,7 +177,13 @@ function renderShop() {
   }
   const rc = R.rerollCostNow(run);
   const freeR = run.freeRerolls + run.rerollBank;
+  const tq = R.currentTrinketChoice(run);
+  if (tq) saveRun();
+  const tpanel = tq ? `<div class="tpick"><h2>✨ Merge reward!</h2><div class="sub">Pick a tier ${tq.tier} trinket. It lasts the whole run.${run.trinketQueue.length > 1 ? ` (${run.trinketQueue.length - 1} more after this)` : ''}</div>
+    <div class="choices">${tq.options.map(id => { const t = D.TRINKET[id]; return `<button class="choice" data-act="picktrinket" data-id="${id}">
+      <div class="c-ic">${t.icon}</div><div class="c-t">${esc(t.name)} <span class="ttier t${t.tier}">T${t.tier}</span></div><div class="c-d">${esc(t.desc)}</div></button>`; }).join('')}</div></div>` : '';
   $app.innerHTML = `${topbar()}<main class="scroll">
+    ${tpanel}
     ${teamRows()}
     <h3>Shop <span class="dim">· tiers up to ${D.maxTier(run.day)}${run.sale ? ' · <b class="good">SALE −1</b>' : ''}</span></h3>
     <div class="row6 shop">${run.shop.map((o, i) => o.mon ? card(o.mon, {
@@ -184,7 +195,7 @@ function renderShop() {
   </main>
   <footer class="actionbar">
     <button data-act="reroll" ${run.gold < rc ? 'disabled' : ''}>🎲 Reroll ${rc ? '💰' + rc : `free (${freeR})`}</button>
-    <button class="primary" data-act="battle">⚔️ Battle!</button>
+    <button class="primary" data-act="battle" ${tq ? 'disabled' : ''}>⚔️ Battle!</button>
   </footer>`;
 }
 
@@ -194,7 +205,7 @@ function renderOver() {
     <div class="bigicon">${champ ? '🏆' : '🥀'}</div>
     <h2 class="center">${champ ? 'Champion!' : 'Run over'}</h2>
     <div class="center sub">${run.mode === 'ranked' ? 'Ranked' : 'Normal'} run · ${run.wins} wins · ${run.losses} losses · reached day ${run.day}</div>
-    ${run.rpRun !== undefined ? `<div class="center big">${run.rpRun >= 0 ? '+' : ''}${run.rpRun} RP this run → ${D.RANKS[rankOf(prof.rp)].icon} ${D.RANKS[rankOf(prof.rp)].name} (${prof.rp} RP)</div>` : ''}
+    ${rankChangeLine()}
     <h3>Final team</h3><div class="row6">${run.team.map((m, i) => card(m, { zone: 'final', i })).join('')}</div>
     <h3>Battles</h3><div class="hist">${run.history.map(h => `<div class="${h.won ? 'good' : 'bad'}">D${h.day} ${h.won ? 'W' : 'L'} vs ${esc(h.opp)} <span class="dim">(⚡${h.power} vs ${h.oppPower})</span></div>`).join('')}</div>
     <div class="menu"><button class="primary big" data-act="new" data-mode="${run.mode}">Play again</button><button class="big" data-act="title">Title</button></div>
@@ -215,7 +226,7 @@ function renderDex() {
 }
 
 // ---------------------------------------------------------------- modals
-function modal(html) { $modal.innerHTML = `<div class="m-box">${html}<div class="btns"><button class="primary" data-act="closemodal">OK</button></div></div>`; $modal.classList.remove('hidden'); }
+function modal(html, ownButtons) { $modal.innerHTML = `<div class="m-box">${html}${ownButtons ? '' : '<div class="btns"><button class="primary" data-act="closemodal">OK</button></div>'}</div>`; $modal.classList.remove('hidden'); }
 function closeModal() { $modal.classList.add('hidden'); $modal.innerHTML = ''; }
 
 function helpHtml() {
@@ -224,7 +235,9 @@ function helpHtml() {
   <p><b>Battles</b> are automatic. Every mon casts its move each time its cooldown fills, in slot order (slot 1 first). All mons hit the enemy team's <b>shared HP bar</b>. After 30s, <b>sudden death</b> drains both teams faster every second. Ties go to you.</p>
   <p><b>Shop</b>: up to 6 mons on your team, extras wait on the bench. Each shop copy has its own ATK and POW roll. Buy <b>3 copies</b> of a mon to merge it into <b>level 2</b>, and two level 2s into <b>level 3</b>. Merging keeps the best ATK and POW of the copies. Tier never changes. Lock offers you want to keep for tomorrow; unspent gold carries over.</p>
   <p><b>Each run uses 5 random types</b> in the shop, so copies show up often enough to merge.</p>
-  <p><b>Ranked</b>: opponents are picked close to your team's ⚡ power (a bit above it at higher ranks). Wins +${D.RP.win} RP, losses ${D.RP.loss} RP, champion +${D.RP.champion}. Ranks: ${D.RANKS.map(r => r.icon + ' ' + r.name).join(' → ')}.</p>
+  <p><b>Merge rewards</b>: every merge lets you pick 1 of 3 <b>trinkets</b> of the merged mon's tier (tier 1 mon → tier 1 trinkets, up to tier 5). Trinkets last the whole run.</p>
+  <p><b>Prices</b>: a mon costs about 10 × its tier, ±5 depending on how strong it is. Selling refunds half per copy.</p>
+  <p><b>Ranked</b>: opponents are picked close to your team's ⚡ power (a bit above it at higher ranks). Your rank moves when the run ends: <b>6+ wins → rank up</b>, <b>5 wins → rank holds</b>, <b>under 5 → rank down</b>. Ranks: ${D.RANKS.map(r => r.icon + ' ' + r.name).join(' → ')}.</p>
   <h3>Types</h3>${D.TYPE_KEYS.map(k => `<p><b>${TYPES[k].icon} ${TYPES[k].name} (${TYPES[k].mech})</b>: ${TYPES[k].blurb}</p>`).join('')}
   <p class="dim">Healing above max HP turns into shield at half value. Shield caps at 50% of max HP.</p>`;
 }
@@ -236,7 +249,7 @@ function menuHtml() {
     <button data-act="help">How to play</button><button data-act="dex">Mondex</button>
     <button data-act="title">Back to title (run is saved)</button>
     <button class="danger" data-act="abandon">Abandon run</button></div>
-    <h3>Trinkets</h3>${run.trinkets.length ? run.trinkets.map(t => `<p>${D.TRINKET[t].icon} <b>${D.TRINKET[t].name}</b>: ${D.TRINKET[t].desc}</p>`).join('') : '<p class="dim">None yet.</p>'}
+    <h3>Trinkets</h3>${run.trinkets.length ? run.trinkets.map(t => `<p>${D.TRINKET[t].icon} <b>${D.TRINKET[t].name}</b> <span class="ttier t${D.TRINKET[t].tier}">T${D.TRINKET[t].tier}</span>: ${D.TRINKET[t].desc}</p>`).join('') : '<p class="dim">None yet.</p>'}
     ${run.avatar ? `<h3>Trainer</h3><p>${D.AVATAR[run.avatar].face} <b>${D.AVATAR[run.avatar].name}</b>: ${D.AVATAR[run.avatar].perk}</p>` : ''}`;
 }
 
@@ -255,6 +268,7 @@ function tapSlot(zone, i) {
     if (ui.pending === null) return;
     const m = (zone === 'team' ? run.team : run.bench)[i];
     if (!m) return;
+    if (!R.validTarget(run, run.event.choices[ui.pending], m)) return toast('That mon can\'t be picked for this');
     const res = R.chooseEvent(run, ui.pending, { zone, i });
     if (!res.ok) return toast(res.msg);
     ui.pending = null; saveRun(); toast(res.msg); return render();
@@ -274,15 +288,17 @@ function tapSlot(zone, i) {
 
 const actions = {
   continue() { ui.screen = 'run'; render(); },
+  splash() { splashI++; render(); },
+  picktrinket(el) { const res = R.chooseTrinket(run, el.dataset.id); toast(res.msg); saveRun(); render(); },
   new(el) {
     const mode = el.dataset.mode;
     if (run && run.phase !== 'over') {
-      modal(`<h2>Start over?</h2><p>Your current ${run.mode} run (day ${run.day}, ${run.wins} wins) will be lost.</p><button class="danger" data-act="confirmnew" data-mode="${mode}">Yes, start a new ${mode} run</button>`);
+      modal(`<h2>Start over?</h2><p>Your current ${run.mode} run (day ${run.day}, ${run.wins} wins) will end${run.mode === 'ranked' ? ' and count for your rank' : ''}.</p><button class="danger" data-act="confirmnew" data-mode="${mode}">Yes, start a new ${mode} run</button>`);
       return;
     }
     startRun(mode);
   },
-  confirmnew(el) { if (run && run.mode === 'ranked' && run.phase !== 'over') { /* abandoning ranked counts as finished */ } startRun(el.dataset.mode); },
+  confirmnew(el) { if (run && run.phase !== 'over') { run.phase = 'over'; run.result = 'out'; finishRunStats(); } startRun(el.dataset.mode); },
   title() { closeModal(); ui.screen = 'title'; ui.sel = null; render(); },
   dex() { closeModal(); ui.screen = 'dex'; render(); },
   dextype(el) { ui.dexType = el.dataset.t; ui.dexSel = null; render(); },
@@ -290,8 +306,8 @@ const actions = {
   news() { prof.seen = D.VERSION; saveProf(); modal(newsHtml()); },
   menu() { modal(menuHtml()); },
   closemodal() { closeModal(); if (ui.screen === 'title') render(); },
-  trinket(el) { const t = D.TRINKET[el.dataset.id]; toast(`${t.icon} ${t.name}: ${t.desc}`); },
-  abandon() { modal(`<h2>Abandon run?</h2><p>This ends the run now.</p><button class="danger" data-act="confirmabandon">Abandon</button>`); },
+  trinket(el) { const t = D.TRINKET[el.dataset.id]; toast(`${t.icon} ${t.name} (T${t.tier}): ${t.desc}`); },
+  abandon() { modal(`<h2>Abandon run?</h2><p>This ends the run now.${run.mode === 'ranked' ? ` Ranked: your ${run.wins} wins count for your rank.` : ''}</p><button class="danger" data-act="confirmabandon">Abandon</button>`); },
   confirmabandon() { run.phase = 'over'; run.result = 'out'; finishRunStats(); saveRun(); closeModal(); render(); },
   choose(el) {
     const i = Number(el.dataset.i), c = run.event.choices[i];
@@ -309,17 +325,47 @@ const actions = {
   reroll() { const res = R.reroll(run); if (!res.ok) return toast(res.msg); if (ui.sel && ui.sel.zone === 'shop') ui.sel = null; saveRun(); render(); },
   battle() {
     if (!run.team.some(Boolean)) return toast('Put at least one mon on your team!');
-    startBattle();
+    if (R.currentTrinketChoice(run)) return toast('Pick your merge trinket first!');
+    const empty = run.team.filter(x => !x).length, benched = run.bench.filter(Boolean).length;
+    const warn = [];
+    if (empty && benched) warn.push(`${empty} empty team slot${empty > 1 ? 's' : ''} while ${benched} mon${benched > 1 ? 's sit' : ' sits'} on the bench`);
+    else if (empty) warn.push(`${empty} empty team slot${empty > 1 ? 's' : ''}`);
+    if (run.gold >= 10) warn.push(`💰${run.gold} unspent (it carries over)`);
+    modal(`<h2>⚔️ Ready to battle?</h2><p>Day ${run.day} · ⚡ Power ${R.runPower(run)}</p>
+      ${warn.length ? `<ul>${warn.map(w => `<li>${w}</li>`).join('')}</ul>` : '<p class="dim">Team looks complete.</p>'}
+      <div class="btns"><button data-act="closemodal">Not yet</button><button class="primary" data-act="gobattle">Fight!</button></div>`, true);
   },
+  gobattle() { closeModal(); startBattle(); },
   speed(el) { prof.speed = Number(el.dataset.s); saveProf(); if (ui.battle) { ui.battle.speed = prof.speed; markSpeed(); } },
   skip() { if (ui.battle) skipBattle(); },
   afterbattle() { ui.battle = null; ui.sel = null; render(); },
 };
 
+// Ranked: rank moves once, when the run ends, by total wins (6+ up, 5 stay, under 5 down)
 function finishRunStats() {
+  if (run.statsDone) return;
+  run.statsDone = true;
   prof.runs++; if (run.result === 'champion') prof.champs++;
   prof.bestWins = Math.max(prof.bestWins, run.wins);
+  if (run.mode === 'ranked') {
+    const before = prof.rank;
+    prof.rank = Math.max(0, Math.min(D.RANKS.length - 1, prof.rank + D.rankDelta(run.wins)));
+    prof.peakRank = Math.max(prof.peakRank, prof.rank);
+    run.rankChange = { before, after: prof.rank };
+  }
   saveProf();
+}
+function rankForecast() {
+  const w = run.wins;
+  if (w >= D.RANK_RULE.up) return '<span class="good">rank up locked in ⬆</span>';
+  if (w === D.RANK_RULE.stay) return 'rank holds · 1 more win to rank up';
+  return `${D.RANK_RULE.stay - w} more win${D.RANK_RULE.stay - w > 1 ? 's' : ''} to hold rank`;
+}
+function rankChangeLine() {
+  const c = run.rankChange; if (!c) return '';
+  const a = D.RANKS[c.after];
+  const word = c.after > c.before ? '<b class="good">RANK UP!</b>' : c.after < c.before ? '<b class="bad">Rank down</b>' : (c.before === D.RANKS.length - 1 && run.wins >= D.RANK_RULE.up ? 'Still at the top!' : 'Rank holds');
+  return `<div class="center big">${word} ${a.icon} ${a.name} <span class="dim">(${run.wins} wins)</span></div>`;
 }
 
 document.addEventListener('click', (e) => {
@@ -332,22 +378,12 @@ document.addEventListener('click', (e) => {
 
 // ---------------------------------------------------------------- battle
 function startBattle() {
-  const opp = R.pickOpponent(run, LIBRARY, rankOf(prof.rp));
+  const opp = R.pickOpponent(run, LIBRARY, prof.rank);
   const me = R.snapshot(run, 'You');
   const res = simulate(R.battleTeamFromSnap(me), R.battleTeamFromSnap(opp), { log: true });
   const won = res.winner === 0;
   const daysBefore = run.day;
   const sum = R.finishBattle(run, won, opp);
-  sum.rp = 0;
-  if (run.mode === 'ranked') {
-    sum.rp = won ? D.RP.win : D.RP.loss;
-    if (run.phase === 'over' && run.result === 'champion') sum.rp += D.RP.champion;
-    const before = prof.rp;
-    prof.rp = Math.max(0, prof.rp + sum.rp);
-    sum.rp = prof.rp - before; sum.rankBefore = rankOf(before); sum.rankAfter = rankOf(prof.rp);
-    prof.peakRp = Math.max(prof.peakRp, prof.rp);
-    run.rpRun = (run.rpRun || 0) + sum.rp;
-  }
   if (run.phase === 'over') finishRunStats();
   saveRun(); saveProf();
   ui.battle = { opp, me, res, sum, day: daysBefore, pt: 0, fi: 0, speed: prof.speed, done: false, last: 0, live: 0 };
@@ -497,12 +533,12 @@ function showResult() {
   const won = b.res.winner === 0, s = b.sum;
   const tie = b.res.hp[0] <= 0 && b.res.hp[1] <= 0;
   const over = run.phase === 'over';
-  const rkLine = run.mode === 'ranked' ? `<div class="rp ${s.rp >= 0 ? 'good' : 'bad'}">${s.rp >= 0 ? '+' : ''}${s.rp} RP · ${D.RANKS[s.rankAfter].icon} ${D.RANKS[s.rankAfter].name} ${s.rankAfter > s.rankBefore ? '<b>RANK UP!</b>' : s.rankAfter < s.rankBefore ? '(rank down)' : ''}</div>` : '';
+  const rkLine = run.mode === 'ranked' ? (over ? rankChangeLine() : `<div class="rp">${D.RANKS[prof.rank].icon} Ranked · ${rankForecast()}</div>`) : '';
   const el = $('bresult');
   el.innerHTML = `<div class="r-box ${won ? 'win' : 'lose'}"><div class="r-t">${won ? (tie ? 'Tie — you win!' : 'Victory!') : 'Defeat'}</div>
     <div class="sub">${b.res.t.toFixed(1)}s · your HP ${Math.ceil(b.res.hp[0])}/${b.res.maxHp[0]} · theirs ${Math.ceil(b.res.hp[1])}/${b.res.maxHp[1]}</div>
     ${rkLine}
-    ${s.salvage ? `<div>🪙 Salvage +${s.salvage} gold</div>` : ''}${s.egg ? `<div>🥚 Golden Egg +${s.egg} gold</div>` : ''}
+    ${s.salvage ? `<div>🪙 Salvage +${s.salvage} gold</div>` : ''}${s.egg ? `<div>🥚 Trinkets +${s.egg} gold for the win</div>` : ''}
     <div class="sub">🏆 ${run.wins}/${RULES.winsToChampion} · ❤️ ${run.lives}</div>
     <button class="primary big" data-act="afterbattle">${over ? (run.result === 'champion' ? 'Claim the title 🏆' : 'See run summary') : `Day ${run.day} →`}</button></div>`;
   el.classList.remove('hidden');

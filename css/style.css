@@ -192,3 +192,21 @@ h3 .dim { text-transform: none; letter-spacing: 0; font-weight: 400; }
 .rp { font-weight: 800; }
 
 @media (max-width: 380px) { .card .nm { font-size: 8.5px; } .logo { font-size: 34px; } }
+
+/* ---- v0.2 */
+.logowrap { position: relative; display: flex; flex-direction: column; align-items: center; }
+.splash { align-self: flex-end; margin: 2px -6px 0 0; transform: rotate(-6deg); color: #ffee3a; font-weight: 900; font-size: 13px; text-shadow: 2px 2px 0 #3a2a00; white-space: nowrap; animation: splash 0.9s ease-in-out infinite; cursor: pointer; }
+@keyframes splash { 50% { transform: rotate(-6deg) scale(1.08); } }
+.ladder { display: flex; justify-content: center; gap: 4px; margin: 6px 0 2px; font-size: 18px; }
+.ladder span { opacity: 0.25; filter: grayscale(1); }
+.ladder span.past { opacity: 0.6; filter: none; }
+.ladder span.on { opacity: 1; filter: drop-shadow(0 0 6px var(--rc)); transform: scale(1.35); }
+.tpick { background: linear-gradient(#3a2d66, #26306a); border: 2px solid var(--gold); border-radius: 14px; padding: 10px; margin: 8px 0; animation: glow 1.4s ease-in-out infinite; }
+@keyframes glow { 50% { box-shadow: 0 0 16px #ffd54a66; } }
+.ttier { display: inline-block; font-size: 10px; padding: 0 5px; border-radius: 6px; color: #1b1424; font-weight: 800; vertical-align: middle; }
+.ttier.t1 { background: #c9c9c9; } .ttier.t2 { background: #6fe08a; } .ttier.t3 { background: #5fb0ff; } .ttier.t4 { background: #c77dff; } .ttier.t5 { background: #ffb02e; }
+.m-box ul { padding-left: 20px; }
+.card .art svg, .bmon .art svg, .d-art svg { animation: idle 2.4s ease-in-out infinite; transform-origin: 50% 90%; }
+.card:nth-child(2n) .art svg, .bmon:nth-child(2n) .art svg { animation-delay: -0.8s; }
+.card:nth-child(3n) .art svg, .bmon:nth-child(3n) .art svg { animation-delay: -1.6s; }
+@keyframes idle { 0%, 100% { transform: translateY(0) scale(1, 1); } 50% { transform: translateY(-1.5px) scale(1.02, 0.98); } }

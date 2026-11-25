@@ -2,20 +2,23 @@
 // Clock ticks every 0.1s. Each tick: charge timers, mons that reach their cooldown cast in
 // slot order (slot 1 player, slot 1 opponent, slot 2 player, ...), then the battle ends if a
 // team is at 0 HP. Statuses tick once per second. Ties go to side A (the player).
-import { MON, RULES, LV, FX, ECHO_KEYS, fxValue } from './data.js';
+import { MON, RULES, LV, FX, ECHO_KEYS, fxValue, trinketBonus } from './data.js?v=0.2';
 
 const DT = 0.1;
 const TPS = 10; // ticks per second
 const CAPS = { growth: 150, haste: 60, chill: 50, expose: 60, weaken: 40, scrap: 40, selfgrow: 200 };
-const DECAY = { chill: 3, haste: 3, expose: 2, weaken: 2 }; // points lost per second
+const DECAY = { chill: 3, haste: 3, expose: 1.5, weaken: 1.5 }; // points lost per second
 
 function makeUnit(inst, side, pos, team) {
   if (!inst) return null;
   const def = MON[inst.id];
   let atk = inst.atk, pow = inst.pow;
-  if (pos === 0 && team.trinkets.includes('leaderbadge')) { atk *= 1.35; pow *= 1.35; }
-  if (pos === 5 && team.trinkets.includes('rearguard')) { atk *= 1.35; pow *= 1.35; }
-  if (pos === 0 && team.avatar === 'coach') { atk *= 1.3; pow *= 1.3; }
+  const b = team.bonus;
+  let k = 1 + (b.type[def.type] || 0) / 100;
+  if (pos === 0) k += (b.slot1 || 0) / 100;
+  if (pos === 5) k += (b.slot6 || 0) / 100;
+  if (pos === 0 && team.avatar === 'coach') k += 0.3;
+  atk *= k; pow *= k;
   return { side, pos, def, lvl: inst.lvl, atk, pow, cd: def.cd, charge: 0, ramp: 0, casts: 0 };
 }
 
@@ -24,19 +27,20 @@ function makeSide(team, side) {
     side, maxHp: team.maxHp, hp: team.maxHp, shield: 0,
     burn: 0, poison: 0, chill: 0, haste: 0, expose: 0, weaken: 0, growth: 0,
     doom: 0, doomT: 0, scrap: 0, rebirth: 0, rebirthUsed: false,
-    trinkets: team.trinkets || [], avatar: team.avatar,
+    trinkets: team.trinkets || [], avatar: team.avatar, bonus: trinketBonus(team.trinkets),
     dmgDealt: 0, healed: 0,
   };
   s.units = [];
   for (let i = 0; i < 6; i++) s.units.push(makeUnit(team.mons[i], side, i, s));
-  s.prism = s.trinkets.includes('prism') ? 1.2 : 1;
-  s.whet = s.trinkets.includes('whetstone') ? 1.1 : 1;
+  s.prism = 1 + (s.bonus.fxp || 0) / 100;
+  s.whet = 1 + (s.bonus.dmg || 0) / 100;
+  s.wind = s.bonus.wind || 0; s.windUsed = false;
   return s;
 }
 
 // value of an effect for a unit (level + POW + prism), echo scale applied by caller
 function val(u, key, base, side) {
-  return fxValue(key, base, u.def.tier, u.lvl, u.pow) * side.prism;
+  return fxValue(key, base, u.def, u.lvl, u.pow) * side.prism;
 }
 
 export function simulate(teamA, teamB, opts = {}) {
@@ -137,10 +141,11 @@ export function simulate(teamA, teamB, opts = {}) {
     const d = u.def, fx = d.fx;
     ev({ k: 'cast', s: u.side, pos: u.pos, echo: !!echoed, by: echoed ? echoed.pos : undefined });
     // ---- direct hit
-    let base = fxValue('dmg', d.dmg, d.tier, u.lvl, u.atk);
+    let base = fxValue('dmg', d.dmg, d, u.lvl, u.atk);
     if (d.type === 'junk' && own.scrap > 0) base += own.scrap * 0.4 * LV.dmg[u.lvl] * (1 + (fx.scrapper ? val(u, 'scrapper', fx.scrapper, own) / 100 : 0));
     if (fx.bash) base += own.shield * val(u, 'bash', fx.bash, own) / 100;
     let mult = (1 + own.growth / 100 + u.ramp / 100) * (1 + foe.expose / 100) * (1 - own.weaken / 100) * own.whet;
+    if (own.bonus.rage && own.hp < own.maxHp * 0.5) mult *= 1 + own.bonus.rage / 100;
     if (fx.execute && foe.hp < foe.maxHp * 0.3) mult *= 1 + val(u, 'execute', fx.execute, own) / 100;
     const dealt = damage(foe, base * mult * scale, 'hit', false);
     own.dmgDealt += dealt;
@@ -173,13 +178,13 @@ export function simulate(teamA, teamB, opts = {}) {
       ev({ k: 'cast', s: side.side, pos: p, start: true });
     }
   }
-  for (const side of S) if (side.trinkets.includes('warmblanket')) addShield(side, side.maxHp * 0.1);
+  for (const side of S) if (side.bonus.shield) addShield(side, side.maxHp * side.bonus.shield / 100);
   if (log) { log.push(frame(0, S, events)); events = []; }
 
   const speed = (side, t) => {
     let h = 1 + side.haste / 100;
-    if (side.trinkets.includes('hourglass')) h += 0.08;
-    if (t < 4 && side.trinkets.includes('openingact')) h += 0.5;
+    h += (side.bonus.speed || 0) / 100;
+    if (t < 4) h += (side.bonus.open || 0) / 100;
     return Math.max(0.3, h * (1 - side.chill / 100));
   };
 
@@ -206,7 +211,7 @@ export function simulate(teamA, teamB, opts = {}) {
         if (t > RULES.battleSeconds) {
           const n = t - RULES.battleSeconds;
           let drain = side.maxHp * RULES.suddenDeathRamp * n;
-          if (side.trinkets.includes('overtime')) drain *= 0.5;
+          drain *= Math.max(0, 1 - (side.bonus.sd || 0) / 100);
           damage(side, drain, 'sudden', true);
         }
       }
@@ -215,6 +220,9 @@ export function simulate(teamA, teamB, opts = {}) {
     // 4) rebirth (once) if low but alive
     for (const side of S) if (side.rebirth && !side.rebirthUsed && side.hp > 0 && side.hp < side.maxHp * 0.3) {
       side.rebirthUsed = true; heal(side, side.maxHp * side.rebirth / 100, true); ev({ k: 'rebirth', s: side.side });
+    }
+    for (const side of S) if (side.wind && !side.windUsed && side.hp > 0 && side.hp < side.maxHp * 0.3) {
+      side.windUsed = true; heal(side, side.maxHp * side.wind / 100, true); ev({ k: 'rebirth', s: side.side, wind: true });
     }
     if (log) { log.push(frame(t, S, events)); events = []; }
     // 5) end check
