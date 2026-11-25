@@ -1,11 +1,11 @@
 // Pocketomon run logic: days, events, shop, merging, snapshots. Pure state functions
 // (the UI and the bot simulator both use them). Randomness comes from run.rs (saved).
 import {
-  RULES, MON, MONS, TYPE_KEYS, AVATARS, AVATAR, TRINKETS, TRINKET, isBattleTrinket, trinketBonus, TRIGGERS,
+  RULES, MON, MONS, TYPE_KEYS, AVATARS, AVATAR, TRINKETS, TRINKET, isBattleTrinket, trinketBonus, TRIGGERS, inZone, trinketPrice,
   teamHp, income, price, sellPerCopy, tierWeights, maxTier, TIER_POWER, LV_POWER, fxValue,
-} from './data.js?v=0.3';
-import { makeRng, hash } from './rng.js?v=0.3';
-import { rateTeam } from './battle.js?v=0.3';
+} from './data.js?v=0.4';
+import { makeRng, hash } from './rng.js?v=0.4';
+import { rateTeam } from './battle.js?v=0.4';
 
 export function rngOf(run) { const r = makeRng(run.rs); return r; }
 function save(run, r) { run.rs = r.state(); }
@@ -66,6 +66,7 @@ export function rollShop(run, r, keepLocked) {
     next.push({ mon: rollInst(run, drawMonId(run, r), r), locked: false });
   }
   run.shop = next;
+  rollTrinketOffer(run, r, keepLocked);
 }
 
 function drawMonId(run, r) {
@@ -166,7 +167,7 @@ export function chooseEvent(run, idx, target) {
   switch (c.kind) {
     case 'avatar': {
       run.avatar = c.id;
-      if (c.id === 'mystic') { const t = r.pick(trinketPool(run, 2)); run.trinkets.push(t.id); fireAll(run, 'trinket'); msg = `Oona found a ${t.name}!`; while (run.bench.length < benchSize(run)) run.bench.push(null); }
+      if (c.id === 'mystic') { const t = r.pick(trinketPool(run, 2)); gainTrinket(run, t.id); msg = `Oona found a ${t.name}!`; while (run.bench.length < benchSize(run)) run.bench.push(null); }
       if (c.id === 'junkyard' && !run.types.includes('junk')) run.types[r.int(run.types.length)] = 'junk';
       if (c.id === 'tamer') for (let k = 0; k < 2; k++) addMon(run, rollInst(run, r.pick(MONS.filter(x => x.tier === 1 && run.types.includes(x.type))).id, r));
       if (c.id === 'scholar' || c.id === 'junkyard') rollShop(run, r, true);
@@ -188,7 +189,7 @@ export function chooseEvent(run, idx, target) {
       }
       break;
     }
-    case 'trinket': run.trinkets.push(c.id); fireAll(run, 'trinket'); while (run.bench.length < benchSize(run)) run.bench.push(null); msg = `Got ${TRINKET[c.id].name}`; break;
+    case 'trinket': gainTrinket(run, c.id); while (run.bench.length < benchSize(run)) run.bench.push(null); msg = `Got ${TRINKET[c.id].name}`; break;
     case 'hp': run.hpBonus = +(run.hpBonus + 0.1).toFixed(2); msg = 'Team HP +10%'; break;
     case 'rerolls': run.rerollBank += 4; msg = '+4 free rerolls'; break;
     case 'sale': run.sale = true; msg = 'Sale today!'; break;
@@ -214,7 +215,7 @@ export function mergeInsts(run, list) {
   const lvl = list[0].lvl + 1;
   const m = {
     uid: run.uid++, id: list[0].id, lvl,
-    atk: Math.max(...list.map(x => x.atk)), pow: Math.max(...list.map(x => x.pow)),
+    atk: Math.max(...list.map(x => x.atk)), pow: Math.max(...list.map(x => x.pow)), plus: Math.max(...list.map(x => x.plus || 0)),
     copies: list.reduce((a, x) => a + (x.copies || 1), 0),
   };
   if (run.avatar === 'breeder') { m.atk = +(m.atk + 0.1).toFixed(2); m.pow = +(m.pow + 0.1).toFixed(2); }
@@ -231,6 +232,7 @@ export function addMon(run, inst, dest) {
     let merged = mergeInsts(run, [parts[0].m, parts[1].m, inst]);
     slotsOf(run, into.zone)[into.i] = merged;
     queueTrinket(run, MON[inst.id].tier);
+    (run.celebrate = run.celebrate || []).push({ k: 'merge', id: inst.id, lvl: 2 });
     fireShopTrigger(run, merged, 'levelUp', into);
     const lvl3 = checkL3(run, merged, into);
     return { ok: true, merged: lvl3 ? 3 : 2, at: lvl3 || into };
@@ -255,6 +257,7 @@ function checkL3(run, m, at) {
   const l3 = mergeInsts(run, [m, other.m]);
   slotsOf(run, into.zone)[into.i] = l3;
   queueTrinket(run, MON[m.id].tier);
+  (run.celebrate = run.celebrate || []).push({ k: 'merge', id: m.id, lvl: 3 });
   fireShopTrigger(run, l3, 'levelUp', into);
   return into;
 }
@@ -272,6 +275,9 @@ export function fireShopTrigger(run, m, on, loc) {
   if (!t || t.on !== on) return '';
   const d = t.do, lvl = m.lvl, name = MON[m.id].name;
   if (d.grow) { growMon(m, d.grow, lvl); return `${name} grew!`; }
+  if (d.plus) { m.plus = rnd3((m.plus || 0) + d.plus * lvl); return `${name}: +${rnd3(d.plus * lvl)} hit damage`; }
+  if (d.junk) { for (let k = 0; k < d.junk * lvl; k++) gainTrinket(run, randomJunk(run)); return `${name} found junk!`; }
+  if (d.trinket) { const id = randomTrinket(run, Math.min(5, d.trinket + lvl - 1)); gainTrinket(run, id); return `${name} found a ${TRINKET[id].name}!`; }
   if (d.gold) { run.gold += d.gold * lvl; return `${name}: +${d.gold * lvl} gold`; }
   if (d.growAll) { for (const o of owned(run)) if (MON[o.m.id].type === d.growAll.type) growMon(o.m, d.growAll, lvl); return `${name} boosted your ${d.growAll.type} mons!`; }
   if (d.growRand) {
@@ -282,13 +288,47 @@ export function fireShopTrigger(run, m, on, loc) {
   }
   if (d.growFront) {
     let target = null;
-    if (loc && loc.zone === 'team' && loc.i > 0) target = run.team.slice(0, loc.i).reverse().find(Boolean);
+    if (loc && loc.zone === 'team') target = run.team.find((x, j) => x && x !== m && inZone('front', loc.i, j)) || run.team.find((x, j) => x && x !== m && inZone('adjacent', loc.i, j));
     if (!target) target = run.team.slice().reverse().find(x => x && x !== m);
     if (!target) return '';
     growMon(target, d.growFront, lvl); return `${name} boosted ${MON[target.id].name}!`;
   }
   return '';
 }
+// ---- trinket gains (any source): queue a gift for the UI and fire "trinket gained" triggers
+let trinketDepth = 0;
+export function gainTrinket(run, id) {
+  run.trinkets.push(id);
+  (run.celebrate = run.celebrate || []).push({ k: 'gift', id });
+  while (run.bench.length < benchSize(run)) run.bench.push(null);
+  if (trinketDepth < 3) { trinketDepth++; fireAll(run, 'trinket'); trinketDepth--; }
+}
+export function randomJunk(run) {
+  const r = rngOf(run); const t = r.pick(TRINKETS.filter(x => x.tier === 0)); save(run, r); return t.id;
+}
+export function randomTrinket(run, tier) {
+  const r = rngOf(run);
+  for (let t = tier; t >= 1; t--) { const pool = trinketPool(run, t); if (pool.length) { const x = r.pick(pool); save(run, r); return x.id; } }
+  save(run, r); return randomJunk(run);
+}
+// ---- shop trinket slot: one trinket offer per shop roll, tier drawn like mons
+export function rollTrinketOffer(run, r, keepLocked) {
+  if (keepLocked && run.tshop && run.tshop.locked && run.tshop.id) return;
+  const tier = 1 + r.weighted(tierWeights(run.day));
+  let pool = [];
+  for (let t = tier; t >= 1 && !pool.length; t--) pool = trinketPool(run, t);
+  run.tshop = pool.length ? { id: r.pick(pool).id, locked: false } : null;
+}
+export function buyTrinket(run) {
+  const o = run.tshop; if (!o || !o.id) return { ok: false, msg: 'Nothing there' };
+  const t = TRINKET[o.id], cost = trinketPrice(t);
+  if (run.gold < cost) return { ok: false, msg: `Need ${cost} gold` };
+  run.gold -= cost; run.tshop = { id: null, locked: false };
+  gainTrinket(run, t.id);
+  return { ok: true, msg: `Bought ${t.name}!` };
+}
+export function toggleTrinketLock(run) { if (run.tshop && run.tshop.id) run.tshop.locked = !run.tshop.locked; }
+
 export function fireAll(run, on, list) {
   const msgs = [];
   for (const o of (list || owned(run))) { const x = fireShopTrigger(run, o.m, on, o); if (x) msgs.push(x); }
@@ -323,10 +363,8 @@ export function currentTrinketChoice(run) {
 export function chooseTrinket(run, id) {
   const q = currentTrinketChoice(run);
   if (!q || !q.options.includes(id)) return { ok: false, msg: 'Not an option' };
-  run.trinkets.push(id);
   run.trinketQueue.shift();
-  fireAll(run, 'trinket');
-  while (run.bench.length < benchSize(run)) run.bench.push(null);
+  gainTrinket(run, id);
   return { ok: true, msg: `Got ${TRINKET[id].name}!` };
 }
 
@@ -386,7 +424,7 @@ export const maxHpFor = (day, hpBonus, avatar, trinkets) => Math.round(teamHp(da
 // cooldowns ignored). Fun to watch grow, deliberately NOT the real strength (that is the hidden rating).
 export function monPower(m) {
   const def = MON[m.id];
-  let p = fxValue('dmg', def.dmg, def, m.lvl, m.atk);
+  let p = fxValue('dmg', def.dmg, def, m.lvl, m.atk) + (m.plus || 0);
   for (const [k, v] of Object.entries(def.fx)) p += fxValue(k, v, def, m.lvl, m.pow);
   if (def.pas.start) for (const [k, v] of Object.entries(def.pas.start)) p += fxValue(k, v, def, m.lvl, m.pow);
   if (def.pas.regen) p += fxValue('regen', def.pas.regen, def, m.lvl, m.pow);
@@ -404,7 +442,7 @@ export function snapshot(run, name) {
   const s = {
     name, day: run.day, wins: run.wins, losses: run.losses, avatar: run.avatar,
     trinkets: run.trinkets.filter(t => isBattleTrinket(t)), hpBonus: run.hpBonus,
-    team: run.team.map(m => m ? { id: m.id, lvl: m.lvl, atk: m.atk, pow: m.pow } : null),
+    team: run.team.map(m => m ? { id: m.id, lvl: m.lvl, atk: m.atk, pow: m.pow, plus: m.plus || 0 } : null),
     power: runPower(run),
   };
   s.rating = rateTeam(battleTeamFromSnap(s)).rating; // hidden, used by ranked matchmaking
@@ -421,10 +459,12 @@ export function salvageGold(run) {
 }
 
 // Apply a battle result. Returns summary for the UI.
-export function finishBattle(run, won, opp) {
+export function finishBattle(run, won, opp, gains) {
   const sum = { won, day: run.day, gold: 0 };
   if (won) run.wins++; else { run.losses++; run.lives--; }
-  sum.grew = fireAll(run, won ? 'win' : 'loss', run.team.map((m, i) => m && { zone: 'team', i, m }).filter(Boolean));
+  if (gains) run.team.forEach((m, i) => { if (m && gains[i]) m.plus = rnd3((m.plus || 0) + gains[i]); });
+  const teamList = run.team.map((m, i) => m && { zone: 'team', i, m }).filter(Boolean);
+  sum.grew = [fireAll(run, won ? 'win' : 'loss', teamList), fireAll(run, 'battleEnd', teamList)].filter(Boolean).join(' ');
   sum.salvage = salvageGold(run);
   sum.egg = won ? (bonusOf(run).winGold || 0) : 0;
   run.gold += sum.salvage + sum.egg;

@@ -2,7 +2,7 @@
 // Clock ticks every 0.1s. Each tick: charge timers, mons that reach their cooldown cast in
 // slot order (slot 1 player, slot 1 opponent, slot 2 player, ...), then the battle ends if a
 // team is at 0 HP. Statuses tick once per second. Ties go to side A (the player).
-import { MON, RULES, LV, FX, ECHO_KEYS, fxValue, trinketBonus, TRIGGERS, AURAS, inZone } from './data.js?v=0.3';
+import { MON, RULES, LV, FX, ECHO_KEYS, fxValue, trinketBonus, TRIGGERS, AURAS, inZone } from './data.js?v=0.4';
 
 const DT = 0.1;
 const TPS = 10; // ticks per second
@@ -19,7 +19,7 @@ function makeUnit(inst, side, pos, team) {
   if (pos === 5) k += (b.slot6 || 0) / 100;
   if (pos === 0 && team.avatar === 'coach') k += 0.3;
   atk *= k; pow *= k;
-  return { side, pos, def, lvl: inst.lvl, atk, pow, cd: def.cd, charge: 0, ramp: 0, casts: 0, spd: 1, trig: TRIGGERS[def.id] };
+  return { side, pos, def, lvl: inst.lvl, atk, pow, cd: def.cd, charge: 0, ramp: 0, casts: 0, spd: 1, trig: TRIGGERS[def.id], plus: inst.plus || 0, gain: 0 };
 }
 
 function makeSide(team, side) {
@@ -76,6 +76,7 @@ export function simulate(teamA, teamB, opts = {}) {
     for (const u of side.units) {
       if (!u || !u.trig || u.trig.on !== on || chain.has(u)) continue;
       const t = u.trig;
+      if (on === 'selfCast' && data.unit !== u) continue;
       if (on === 'allyCast') {
         const src = data.unit;
         if (src === u || src.def.id === u.def.id) continue;
@@ -91,6 +92,8 @@ export function simulate(teamA, teamB, opts = {}) {
     const own = S[u.side], foe = S[1 - u.side], d = u.trig.do;
     ev({ k: 'trig', s: u.side, pos: u.pos });
     if (d.cast) { u.charge = 0; cast(u, 1, null); return; }
+    if (d.multicast) { u.charge = 0; for (let k = 0; k < d.multicast; k++) cast(u, 1, null); return; }
+    if (d.plus) { const g = d.plus * u.lvl; u.plus += g; u.gain += g; return; } // permanent: written back to the run after battle
     if (d.fx) for (const [k, v] of Object.entries(d.fx)) applyFx(u, own, foe, k, v, 1, 0);
     if (d.pct) {
       const x = (data.v || 0) * d.v / 100 * u.pow * own.prism;
@@ -185,7 +188,7 @@ export function simulate(teamA, teamB, opts = {}) {
     const d = u.def, fx = d.fx;
     ev({ k: 'cast', s: u.side, pos: u.pos, echo: !!echoed, by: echoed ? echoed.pos : undefined });
     // ---- direct hit
-    let base = fxValue('dmg', d.dmg, d, u.lvl, u.atk);
+    let base = fxValue('dmg', d.dmg, d, u.lvl, u.atk) + u.plus;
     if (d.type === 'junk' && own.scrap > 0) base += own.scrap * 0.4 * LV.dmg[u.lvl] * (1 + (fx.scrapper ? val(u, 'scrapper', fx.scrapper, own) / 100 : 0));
     if (fx.bash) base += own.shield * val(u, 'bash', fx.bash, own) / 100;
     let mult = (1 + own.growth / 100 + u.ramp / 100) * (1 + foe.expose / 100) * (1 - own.weaken / 100) * own.whet;
@@ -213,6 +216,7 @@ export function simulate(teamA, teamB, opts = {}) {
       }
     }
     emit(own, 'allyCast', { unit: u });
+    emit(own, 'selfCast', { unit: u });
   }
 
   // ---- battle start: passives in slot order
@@ -289,6 +293,7 @@ export function simulate(teamA, teamB, opts = {}) {
     winner, t: endT, log,
     hp: [Math.max(0, S[0].hp), Math.max(0, S[1].hp)], maxHp: [S[0].maxHp, S[1].maxHp],
     dealt: [S[0].dmgDealt, S[1].dmgDealt], healed: [S[0].healed, S[1].healed],
+    gains: S.map(x => x.units.map(u => (u ? u.gain : 0))), // permanent flat damage earned in this battle, per slot
   };
 }
 

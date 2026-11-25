@@ -1,4 +1,4 @@
-# Pocketomon — design v0.3
+# Pocketomon — design v0.4
 
 Simple asynchronous team auto battler. Players buy mons in a shop, merge copies, and fight one 30 second battle per day against another trainer's same-day snapshot.
 
@@ -57,6 +57,15 @@ Every mon keeps its cooldown cast. 43 mons also have one trigger (`TRIGGERS` in 
 - **Shop / run:** bought, sold, level up (merge), trinket gained, ally sold, reroll, after a win, after a loss.
 - **Actions:** cast now with cooldown reset (rare: Wickwisp, Coilbee, Kazooka, Rainbeau, Monolith, Banshriek), apply an effect (scaled like the move), a % of the triggering amount (damage / heal / shield), permanent ATK/POW growth (self, a type, the mon in front, a random ally of a type), or gold.
 - **Rules:** a mon is never triggered by a copy of itself (same species, any level), and each mon fires at most once per trigger chain, which makes loops impossible. No rate limits and no growth caps: balanced by simulation instead. Permanent growth is stored on the mon, so snapshots carry it.
+
+## v0.4 additions
+- **Shop trinket slot:** every shop roll also offers one trinket (tier drawn with the day's tier odds), price `10 + 10 × tier` (20-60). Lockable, rerolled with the shop. Buying fires "trinket gained" triggers.
+- **Junk trinkets (tier 0):** Bottle Cap, Rubber Duck, Old Sock, Bent Spoon, Lost Button, Banana Peel. No effect, stack freely, never offered as rewards or in the shop; only made by triggers.
+- **New trigger events:** `selfCast` (each time this mon casts), `battleEnd` (after any battle).
+- **New trigger actions:** `multicast: N` (casts N times now, cooldown resets; the repeats can't set off more multicasts thanks to the chain rule), `plus: N` (+N flat hit damage, permanent for the run, earned in shop or in combat and written back after battle; merges keep the best), `junk: N`, `trinket: T` (a random real trinket of tier T, +1 tier per level, max 5).
+- **Assignments:** multicast Encorca (sudden death ×3), Infernodon (enemy <50% ×2), Symphonix (own <50% ×2); per-cast growth Cindermite +0.05, Pyrrhino +0.15, Lashvine +0.06; rare growth Elderoot +6 / Ghoulpup +2 per win, Gearwolf +3 / Titanox +6 / Rustacean +1 per trinket; junk makers Canrat & Magnetick (after each battle), Dumpsterix (when sold, ×2); real trinket finders Oraclam (win, T1), Recyclops (win, T2), Crushbox (level up, T3).
+- **Celebrations:** merges and trinket gains are queued in `run.celebrate` and played as full-screen overlays (fanfare with confetti; gift box that opens). Consecutive junk gifts are batched.
+- **Drag and drop:** touch = hold ~0.2s then drag (moving first scrolls instead), mouse = press and move 10px. Valid targets glow; only a release on a valid target acts (shop mon → empty slot or a slot that completes a merge; trinket → any team/bench slot; own mon → another slot to swap, or the sell bar). Taps still open the details sheet.
 
 ## Events (day 2+)
 Gold (10 + 3 × day), wild mon (free, tier = shop max or one below), mystery egg (one tier above the shop), training (+20% ATK), meditation (+20% POW), trinket (shop's top tier), hot springs (+10% HP), bag of dice (+4 free rerolls), sale (−5 gold per mon today), cloning vat (copy a level 1 mon, day 3+), coin flip (+30 / −10), lucky charm (+1 life).

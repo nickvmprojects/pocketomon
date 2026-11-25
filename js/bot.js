@@ -1,7 +1,7 @@
 // Bot players: used to build the snapshot library and for balance simulations.
 // Deliberately imperfect: they like favourite types, reroll a set amount and arrange simply.
-import { MON, TYPES, TIER_POWER, LV_POWER, ECHO_KEYS, RULES, TRINKET, isBattleTrinket, price, TRIGGERS, AURAS } from './data.js?v=0.3';
-import * as R from './run.js?v=0.3';
+import { MON, TYPES, TIER_POWER, LV_POWER, ECHO_KEYS, RULES, TRINKET, isBattleTrinket, price, TRIGGERS, AURAS, trinketPrice } from './data.js?v=0.4';
+import * as R from './run.js?v=0.4';
 
 const SUPPORT_FRONT = ['rock', 'electric', 'grass', 'psychic', 'ice'];
 
@@ -85,8 +85,15 @@ export function botShop(run, r, prof) {
     if (rerolls < prof.rerolls && run.gold >= R.rerollCostNow(run) + Math.min(cheapest, 10)) { R.reroll(run); rerolls++; continue; }
     break;
   }
-  // lock a good offer we couldn't afford sometimes
+  // shop trinket slot: buy it when there's spare gold (more eager with trinket-loving mons)
+  if (run.tshop && run.tshop.id) {
+    const t = TRINKET[run.tshop.id], cost = trinketPrice(t);
+    const lovers = R.owned(run).filter(o => TRIGGERS[o.m.id] && TRIGGERS[o.m.id].on === 'trinket').length;
+    if (run.gold >= cost && (t.tier >= 2 || lovers) && r() < 0.55 + lovers * 0.15) R.buyTrinket(run);
+  }
+  botTrinkets(run, r, prof);
   arrange(run, prof);
+  run.celebrate = [];
 }
 
 export function arrange(run, prof) {
@@ -141,4 +148,5 @@ export function botDay(run, r, prof) {
   botShop(run, r, prof);
   botTrinkets(run, r, prof);
   arrange(run, prof);
+  run.celebrate = [];
 }

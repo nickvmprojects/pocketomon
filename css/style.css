@@ -271,3 +271,50 @@ html, body { font-size: 15px; }
 .countdown .cd-n { font-family: var(--title); font-size: 96px; font-weight: 900; color: #ffd54a; text-shadow: 4px 4px 0 #d63a5e, 8px 8px 0 #1b1424; animation: cdpop 1s ease-out; }
 .countdown .cd-n.fight { font-size: 64px; color: #fff; }
 @keyframes cdpop { 0% { transform: scale(2.2); opacity: 0; } 25% { transform: scale(1); opacity: 1; } 100% { transform: scale(0.9); opacity: 0.85; } }
+
+/* ================= v0.4: trinket shop card, celebrations, drag and drop ================= */
+.tierpill.t0, .ttier.t0 { background: #8f8f7a; }
+.trk.junk { opacity: 0.75; }
+.trk sub { font-size: 10px; font-weight: 800; }
+.card.tcard { background: radial-gradient(circle at 50% 40%, #4a3d1a, #241d3d 70%); border-color: #ffd54a99; }
+.card.tcard .ticon { position: absolute; inset: 26px 0 38px; display: flex; align-items: center; justify-content: center; font-size: 40px; filter: drop-shadow(0 3px 0 #0008); animation: idle 2.4s ease-in-out infinite; }
+.card.tcard .tlabel { position: absolute; bottom: 25px; left: 0; right: 0; text-align: center; font-size: 10px; font-weight: 900; letter-spacing: 0.15em; color: #ffd54a; }
+.ticonbig { display: flex; align-items: center; justify-content: center; font-size: 44px; }
+.gains { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; font-size: 13px; }
+.gains span { background: #2d2350; border-radius: 8px; padding: 2px 8px; color: #ffd54a; }
+
+.celebrate { position: fixed; inset: 0; z-index: 80; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle, #1d2346ee, #070914f2); animation: celin 0.15s ease-out; cursor: pointer; }
+.celebrate.out { opacity: 0; transition: opacity 0.18s; }
+@keyframes celin { from { opacity: 0; } }
+.cel-box { position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; padding: 20px; max-width: 360px; }
+.cel-art { width: 150px; height: 150px; animation: celpop 0.6s cubic-bezier(.2,1.6,.4,1); filter: drop-shadow(0 0 18px var(--tc)); }
+.cel-art svg { width: 100%; height: 100%; }
+.cel-title { font-family: var(--title); font-size: 46px; font-weight: 900; color: #ffd54a; text-shadow: 3px 3px 0 #d63a5e, 6px 6px 0 #1b1424; animation: celpop 0.5s 0.1s cubic-bezier(.2,1.6,.4,1) both; }
+.cel-title.sm { font-size: 28px; }
+.merge.l3 .cel-title { font-size: 56px; background: linear-gradient(90deg, #ffd54a, #ff5a7a, #6fbcff, #6fe08a, #ffd54a); background-size: 300% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: celpop 0.5s cubic-bezier(.2,1.6,.4,1) both, rainbow 1.2s linear infinite; }
+@keyframes rainbow { to { background-position: 300% 0; } }
+.cel-sub { font-size: 17px; font-weight: 800; margin-top: 6px; }
+.cel-desc { font-size: 15px; margin-top: 8px; color: #dfe3ff; max-width: 300px; }
+@keyframes celpop { 0% { transform: scale(0.2); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+.burst { position: absolute; top: 20px; left: 50%; width: 300px; height: 300px; margin-left: -150px; background: repeating-conic-gradient(from 0deg, color-mix(in srgb, var(--tc) 60%, transparent) 0 10deg, transparent 10deg 24deg); border-radius: 50%; animation: spin 4s linear infinite, celpop 0.5s ease-out; opacity: 0.55; mask: radial-gradient(circle, #000 30%, transparent 70%); -webkit-mask: radial-gradient(circle, #000 30%, transparent 70%); }
+@keyframes spin { to { transform: rotate(360deg); } }
+.conf { position: absolute; top: 90px; left: 50%; width: 9px; height: 14px; border-radius: 2px; animation: conf 1.2s cubic-bezier(.1,.7,.3,1) both; }
+@keyframes conf { 0% { transform: translate(0, 0) rotate(0); opacity: 1; } 100% { transform: translate(var(--x), calc(var(--y) + 160px)) rotate(var(--r)); opacity: 0; } }
+.giftbox { font-size: 110px; animation: giftshake 0.7s ease-in-out both; }
+.giftbox.small { font-size: 80px; animation-duration: 0.45s; }
+@keyframes giftshake { 0% { transform: scale(0.3); } 30% { transform: scale(1.1) rotate(-8deg); } 45% { transform: rotate(10deg); } 60% { transform: rotate(-10deg); } 75% { transform: rotate(8deg) scale(1.05); } 90% { transform: scale(1.3); opacity: 1; } 100% { transform: scale(0.1); opacity: 0; } }
+.gift-open { position: absolute; top: 10px; left: 0; right: 0; display: flex; flex-direction: column; align-items: center; opacity: 0; animation: giftopen 0.45s 0.65s cubic-bezier(.2,1.6,.4,1) forwards; }
+.junkgift .gift-open { animation-delay: 0.4s; }
+@keyframes giftopen { from { opacity: 0; transform: scale(0.3); } to { opacity: 1; transform: scale(1); } }
+.cel-ticon { font-size: 84px; filter: drop-shadow(0 0 16px #ffd54a); }
+.cel-ticon sub { font-size: 22px; font-weight: 900; }
+.cel-box.gift { min-height: 300px; justify-content: center; }
+
+/* drag and drop */
+.card[data-z] { -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }
+.card.ghost { position: fixed; left: 0; top: 0; z-index: 90; pointer-events: none; opacity: 0.95; box-shadow: 0 14px 30px #000c; transition: none; }
+.card.dragging { opacity: 0.35; }
+.card.droptarget { outline: 3px dashed #6fe08a; outline-offset: 1px; }
+.card.droptarget.hover { outline-style: solid; transform: scale(1.06); background: #2e5a3c; }
+.sellzone { flex: 1; text-align: center; padding: 14px; border: 3px dashed #ff6b6b; border-radius: 14px; font-weight: 900; font-size: 16px; color: #ff9a9a; background: #3a1420; }
+.sellzone.hover { background: #6b1a2a; color: #fff; border-style: solid; }

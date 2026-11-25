@@ -1,9 +1,9 @@
 // Pocketomon UI: title, events, shop, battle replay, run end. Mobile first, tap to select.
-import * as D from './data.js?v=0.3';
-import * as R from './run.js?v=0.3';
-import { simulate } from './battle.js?v=0.3';
-import { monSvg } from './art.js?v=0.3';
-import { LIBRARY } from './snapdata.js?v=0.3';
+import * as D from './data.js?v=0.4';
+import * as R from './run.js?v=0.4';
+import { simulate } from './battle.js?v=0.4';
+import { monSvg } from './art.js?v=0.4';
+import { LIBRARY } from './snapdata.js?v=0.4';
 
 const { MON, TYPES, FX, RULES } = D;
 const $app = document.getElementById('app');
@@ -94,6 +94,27 @@ function detail(m, ctx) {
     ${btns ? `<div class="btns">${btns}</div>` : ''}</div>`;
 }
 
+function trinketIcons(list) {
+  const counts = {}; for (const t of list) counts[t] = (counts[t] || 0) + 1;
+  return Object.entries(counts).map(([t, n]) => `<span class="trk ${D.TRINKET[t].tier === 0 ? 'junk' : ''}" data-act="trinket" data-id="${t}">${D.TRINKET[t].icon}${n > 1 ? `<sub>×${n}</sub>` : ''}</span>`).join('');
+}
+function trinketCard(o, sel) {
+  if (!o || !o.id) return `<div class="card sold tcard">SOLD</div>`;
+  const t = D.TRINKET[o.id], price = D.trinketPrice(t);
+  return `<div class="card tcard ${sel ? 'sel' : ''}" data-z="tshop" data-i="0">
+    <div class="c-top"><span class="tierpill t${t.tier}">T${t.tier}</span><span class="price ${run.gold < price ? 'no' : ''}">💰${price}</span></div>
+    ${o.locked ? '<div class="lock">🔒</div>' : ''}<div class="ticon">${t.icon}</div><div class="tlabel">TRINKET</div><div class="nm">${esc(t.name)}</div></div>`;
+}
+function trinketSheet(o) {
+  const t = D.TRINKET[o.id], price = D.trinketPrice(t);
+  return `<div class="detail sheet" style="--tc:#ffd54a"><button class="sheetx" data-act="deselect">✕</button>
+    <div class="d-head"><div class="d-art ticonbig">${t.icon}</div><div><div class="d-name">${esc(t.name)}</div>
+    <div class="d-meta"><span class="tierpill t${t.tier}">Tier ${t.tier} trinket</span></div></div></div>
+    <div class="trigline">${esc(t.desc)}</div>
+    <div class="note dim">Trinkets last the whole run. Buying one also fires "when you gain a trinket" triggers.</div>
+    <div class="btns"><button class="primary" data-act="buytrinket" ${run.gold < price ? 'disabled' : ''}>Buy 💰${price}</button>
+    <button data-act="locktrinket">${o.locked ? '🔓 Unlock' : '🔒 Lock for next day'}</button></div></div>`;
+}
 function topbar() {
   const rk = D.RANKS[prof.rank];
   return `<header class="topbar">
@@ -103,7 +124,7 @@ function topbar() {
     <div class="subbar"><span>${run.avatar ? D.AVATAR[run.avatar].face + ' ' + D.AVATAR[run.avatar].name : ''}</span>
     <span>⚡ Power ${R.runPower(run)}</span><span>❤️ HP ${R.maxHpFor(run.day, run.hpBonus, run.avatar, run.trinkets)}</span></div>
     <div class="typesbar">${run.types.map(t => `<span class="typechip sm" style="background:${TYPES[t].color}">${TYPES[t].icon} ${TYPES[t].name}</span>`).join('')}
-    ${run.trinkets.map(t => `<span class="trk" data-act="trinket" data-id="${t}">${D.TRINKET[t].icon}</span>`).join('')}</div>`;
+    ${trinketIcons(run.trinkets)}</div>`;
 }
 
 function teamRows(opts = {}) {
@@ -122,8 +143,67 @@ function render() {
   if (ui.screen === 'dex') return renderDex();
   if (ui.screen === 'title' || !run) return renderTitle();
   if (run.phase === 'over') return renderOver();
-  if (run.phase === 'event') return renderEvent();
-  return renderShop();
+  if (run.phase === 'event') { renderEvent(); return playCelebrations(); }
+  renderShop(); playCelebrations();
+}
+
+// ---------------------------------------------------------------- celebrations: merge fanfare + trinket gifts
+let celebrating = false;
+function playCelebrations() {
+  if (celebrating || !run || !run.celebrate || !run.celebrate.length) return;
+  celebrating = true;
+  const next = () => {
+    const q = run.celebrate;
+    if (!q.length) { celebrating = false; saveRun(); return; }
+    let item = q.shift();
+    // batch consecutive junk gifts into one
+    if (item.k === 'gift' && D.TRINKET[item.id].tier === 0) {
+      const ids = [item.id];
+      while (q.length && q[0].k === 'gift' && D.TRINKET[q[0].id].tier === 0) ids.push(q.shift().id);
+      item = { k: 'junk', ids };
+    }
+    showCelebration(item, next);
+  };
+  next();
+}
+function confetti(n, host) {
+  const cols = ['#ffd54a', '#ff5a7a', '#6fe08a', '#5fb0ff', '#c77dff', '#ffa94d'];
+  let h = '';
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, d = 120 + Math.random() * 160;
+    h += `<i class="conf" style="--x:${Math.round(Math.cos(a) * d)}px;--y:${Math.round(Math.sin(a) * d - 40)}px;--r:${Math.round(Math.random() * 720 - 360)}deg;background:${cols[i % cols.length]};animation-delay:${Math.round(Math.random() * 120)}ms"></i>`;
+  }
+  return h;
+}
+function showCelebration(item, done) {
+  const el = document.createElement('div');
+  el.className = 'celebrate';
+  let dur = 1500;
+  if (item.k === 'merge') {
+    const def = MON[item.id], T = TYPES[def.type];
+    el.innerHTML = `<div class="cel-box merge l${item.lvl}" style="--tc:${T.color}"><div class="burst"></div>${confetti(item.lvl === 3 ? 44 : 28)}
+      <div class="cel-art">${monSvg(item.id)}</div><div class="cel-title">LEVEL ${item.lvl}${item.lvl === 3 ? '!!' : '!'}</div>
+      <div class="cel-sub">${def.name} ${'★'.repeat(item.lvl)}</div></div>`;
+    dur = item.lvl === 3 ? 2000 : 1500;
+    if (navigator.vibrate) navigator.vibrate(item.lvl === 3 ? [30, 40, 60] : 30);
+  } else if (item.k === 'gift') {
+    const t = D.TRINKET[item.id];
+    el.innerHTML = `<div class="cel-box gift"><div class="giftbox">🎁</div>
+      <div class="gift-open">${confetti(20)}<div class="cel-ticon">${t.icon}</div><div class="cel-title sm">${esc(t.name)}</div>
+      <div class="cel-sub"><span class="tierpill t${t.tier}">Tier ${t.tier} trinket</span></div><div class="cel-desc">${esc(t.desc)}</div></div></div>`;
+    dur = 2100;
+  } else {
+    const counts = {}; for (const id of item.ids) counts[id] = (counts[id] || 0) + 1;
+    el.innerHTML = `<div class="cel-box gift junkgift"><div class="giftbox small">🎁</div>
+      <div class="gift-open"><div class="cel-ticon">${Object.keys(counts).map(id => D.TRINKET[id].icon + (counts[id] > 1 ? `<sub>×${counts[id]}</sub>` : '')).join(' ')}</div>
+      <div class="cel-title sm">Junk ×${item.ids.length}</div><div class="cel-desc">No effect, but every one counts as a trinket!</div></div></div>`;
+    dur = 1300;
+  }
+  document.body.appendChild(el);
+  let closed = false;
+  const close = () => { if (closed) return; closed = true; el.classList.add('out'); setTimeout(() => { el.remove(); done(); }, 180); };
+  el.addEventListener('click', close);
+  setTimeout(close, dur);
 }
 
 let splashI = 0;
@@ -173,10 +253,12 @@ function renderShop() {
   const sel = ui.sel;
   let selM = null, ctx = null;
   if (sel) {
-    if (sel.zone === 'shop') { const o = run.shop[sel.i]; if (o && o.mon) { selM = o.mon; ctx = { zone: 'shop', locked: o.locked, sheet: true }; } }
+    if (sel.zone === 'tshop') { if (!(run.tshop && run.tshop.id)) ui.sel = null; }
+    else if (sel.zone === 'shop') { const o = run.shop[sel.i]; if (o && o.mon) { selM = o.mon; ctx = { zone: 'shop', locked: o.locked, sheet: true }; } }
     else { selM = (sel.zone === 'team' ? run.team : run.bench)[sel.i]; if (selM) ctx = { zone: sel.zone, sheet: true }; }
-    if (!selM) ui.sel = null;
+    if (!selM && ui.sel && ui.sel.zone !== 'tshop') ui.sel = null;
   }
+  const tsel = ui.sel && ui.sel.zone === 'tshop';
   const rc = R.rerollCostNow(run);
   const freeR = run.freeRerolls + run.rerollBank;
   const tq = R.currentTrinketChoice(run);
@@ -185,17 +267,17 @@ function renderShop() {
     <div class="choices">${tq.options.map(id => { const t = D.TRINKET[id]; return `<button class="choice" data-act="picktrinket" data-id="${id}">
       <div class="c-ic">${t.icon}</div><div class="c-t">${esc(t.name)} <span class="ttier t${t.tier}">T${t.tier}</span></div><div class="c-d">${esc(t.desc)}</div></button>`; }).join('')}</div></div>` : '';
   const ownTag = (id) => { const n = R.owned(run).filter(x => x.m.id === id && x.m.lvl === 1).length; return n ? (n >= 2 ? '⤴ MERGE' : `own ${n}`) : ''; };
-  $app.innerHTML = `${topbar()}<main class="scroll ${selM ? 'with-sheet' : ''}">
+  $app.innerHTML = `${topbar()}<main class="scroll ${selM || tsel ? 'with-sheet' : ''}">
     ${tpanel}
     ${teamRows()}
     <div class="sect"><h3>Shop</h3><span class="dim">tiers up to ${D.maxTier(run.day)}${run.sale ? ' · <b class="good">SALE −5</b>' : ''}</span></div>
     <div class="grid3 shop">${run.shop.map((o, i) => o.mon ? card(o.mon, {
       zone: 'shop', i, price: R.offerPrice(run, MON[o.mon.id]), locked: o.locked, sel: sel && sel.zone === 'shop' && sel.i === i, own: ownTag(o.mon.id),
-    }) : `<div class="card sold">SOLD</div>`).join('')}</div>
-    <div class="hint">Tap a mon to see it. Tap a shop mon, then an empty slot, to buy it there. Tap two of yours to swap.</div>
+    }) : `<div class="card sold">SOLD</div>`).join('')}${trinketCard(run.tshop, sel && sel.zone === 'tshop')}</div>
+    <div class="hint">Tap to see details. Hold and drag a shop card onto a slot to buy it, drag your mons to swap them, or drag one onto the bottom bar to sell.</div>
   </main>
-  ${selM ? detail(selM, ctx) : ''}
-  <footer class="actionbar">
+  ${selM ? detail(selM, ctx) : tsel ? trinketSheet(run.tshop) : ''}
+  <footer class="actionbar" id="actionbar">
     <button data-act="reroll" ${run.gold < rc ? 'disabled' : ''}>🎲 Reroll ${rc ? '💰' + rc : `free (${freeR})`}</button>
     <button class="primary" data-act="battle" ${tq ? 'disabled' : ''}>⚔️ Battle!</button>
   </footer>`;
@@ -237,6 +319,8 @@ function helpHtml() {
   <p><b>Battles</b> are automatic. Every mon casts its move each time its cooldown fills, in slot order (slot 1 first). All mons hit the enemy team's <b>shared HP bar</b>. After 30s, <b>sudden death</b> drains both teams faster every second. Ties go to you.</p>
   <p><b>Shop</b>: up to 6 mons on your team, extras wait on the bench. Each shop copy has its own ATK and POW roll. Buy <b>3 copies</b> of a mon to merge it into <b>level 2</b>, and two level 2s into <b>level 3</b>. Merging keeps the best ATK and POW of the copies. Tier never changes. Lock offers you want to keep for tomorrow; unspent gold carries over.</p>
   <p><b>Each run uses 5 random types</b> in the shop, so copies show up often enough to merge.</p>
+  <p><b>Drag and drop</b>: hold a shop card for a moment, then drag it onto a team or bench slot to buy it there (a slot holding 2 copies completes a merge). Drag your own mons to swap them, or onto the bottom bar to sell. Releasing anywhere else cancels. Tap any card to see its details.</p>
+  <p><b>Trinkets</b>: one is always for sale in the shop. Some mons make junk trinkets (no effect, but they count for "when you gain a trinket" triggers) or find real ones.</p>
   <p><b>Team grid</b>: slots 1-3 are the front row and cast first; 4-6 are the back row. "Behind" means the slot directly behind; "adjacent" means left, right, front or behind (no diagonals).</p>
   <p><b>🔔 Triggers</b>: some mons react to things (being bought or sold, levelling up, trinkets, rerolls, wins, allies casting, low HP, sudden death...). A mon is never triggered by a copy of itself, and fires at most once per chain. <b>✨ Auras</b> constantly buff nearby (or far) allies.</p>
   <p><b>⚡ Power</b> is just the sum of your mons' numbers, for fun. It isn't how strong your team really is: Ranked uses a hidden rating.</p>
@@ -254,7 +338,7 @@ function menuHtml() {
     <button data-act="help">How to play</button><button data-act="dex">Mondex</button>
     <button data-act="title">Back to title (run is saved)</button>
     <button class="danger" data-act="abandon">Abandon run</button></div>
-    <h3>Trinkets</h3>${run.trinkets.length ? run.trinkets.map(t => `<p>${D.TRINKET[t].icon} <b>${D.TRINKET[t].name}</b> <span class="ttier t${D.TRINKET[t].tier}">T${D.TRINKET[t].tier}</span>: ${D.TRINKET[t].desc}</p>`).join('') : '<p class="dim">None yet.</p>'}
+    <h3>Trinkets</h3>${run.trinkets.length ? [...new Set(run.trinkets)].map(t => { const n = run.trinkets.filter(x => x === t).length; return `<p>${D.TRINKET[t].icon} <b>${D.TRINKET[t].name}</b>${n > 1 ? ` ×${n}` : ''} <span class="ttier t${D.TRINKET[t].tier}">T${D.TRINKET[t].tier}</span>: ${D.TRINKET[t].desc}</p>`; }).join('') : '<p class="dim">None yet.</p>'}
     ${run.avatar ? `<h3>Trainer</h3><p>${D.AVATAR[run.avatar].face} <b>${D.AVATAR[run.avatar].name}</b>: ${D.AVATAR[run.avatar].perk}</p>` : ''}`;
 }
 
@@ -278,6 +362,7 @@ function tapSlot(zone, i) {
     if (!res.ok) return toast(res.msg);
     ui.pending = null; saveRun(); toast(res.msg); return render();
   }
+  if (zone === 'tshop') { ui.sel = ui.sel && ui.sel.zone === 'tshop' ? null : { zone: 'tshop', i: 0 }; return render(); }
   const sel = ui.sel;
   const slotM = zone === 'shop' ? (run.shop[i] && run.shop[i].mon) : (zone === 'team' ? run.team : run.bench)[i];
   if (!sel) { if (slotM) ui.sel = { zone, i }; return render(); }
@@ -295,6 +380,8 @@ const actions = {
   continue() { ui.screen = 'run'; render(); },
   splash() { splashI++; render(); },
   deselect() { ui.sel = null; render(); },
+  buytrinket() { const res = R.buyTrinket(run); toast(res.msg); if (res.ok) { ui.sel = null; saveRun(); } render(); },
+  locktrinket() { R.toggleTrinketLock(run); saveRun(); render(); },
   picktrinket(el) { const res = R.chooseTrinket(run, el.dataset.id); toast(res.msg); saveRun(); render(); },
   new(el) {
     const mode = el.dataset.mode;
@@ -378,9 +465,116 @@ document.addEventListener('click', (e) => {
   const a = e.target.closest('[data-act]');
   if (a && !a.disabled) { e.preventDefault(); const fn = actions[a.dataset.act]; if (fn) fn(a); return; }
   const c = e.target.closest('.card[data-z]');
+  if (c && suppressClick) return;
   if (c && c.closest('#app')) { const z = c.dataset.z; tapSlot(z, z === 'dex' ? c.dataset.i : Number(c.dataset.i)); return; }
   if (e.target === $modal) closeModal();
 });
+
+// ---------------------------------------------------------------- drag and drop (shop screen)
+// Touch: hold a card ~0.2s, then drag (a quick swipe scrolls instead). Mouse: press and move 10px.
+// Only a release over a valid target does anything; anywhere else cancels. Taps still open the details sheet.
+const DRAG = { on: false, pend: null };
+let suppressClick = false;
+const slotsOf = (z) => (z === 'team' ? run.team : run.bench);
+function dragSource(card) {
+  if (!run || run.phase !== 'shop' || ui.battle || ui.screen !== 'run' || R.currentTrinketChoice(run)) return null;
+  const z = card.dataset.z, i = Number(card.dataset.i);
+  if (z === 'shop') return run.shop[i] && run.shop[i].mon ? { zone: z, i } : null;
+  if (z === 'tshop') return run.tshop && run.tshop.id ? { zone: z, i: 0 } : null;
+  if (z === 'team' || z === 'bench') return slotsOf(z)[i] ? { zone: z, i } : null;
+  return null;
+}
+function canDrop(src, z, i) {
+  if (z !== 'team' && z !== 'bench') return false;
+  if (src.zone === 'tshop') return true;
+  if (src.zone === 'shop') {
+    const m = slotsOf(z)[i], id = run.shop[src.i].mon.id;
+    if (!m) return true;
+    return m.id === id && m.lvl === 1 && R.owned(run).filter(o => o.m.id === id && o.m.lvl === 1).length >= 2; // completes a merge
+  }
+  return !(src.zone === z && src.i === i);
+}
+function beginDrag() {
+  const p = DRAG.pend; if (!p) return;
+  DRAG.on = true; DRAG.src = p.src; suppressClick = true;
+  const r = p.card.getBoundingClientRect();
+  const g = p.card.cloneNode(true);
+  g.classList.add('ghost'); g.classList.remove('sel');
+  g.style.width = r.width + 'px'; g.style.height = r.height + 'px';
+  document.body.appendChild(g); DRAG.ghost = g; DRAG.w = r.width; DRAG.h = r.height;
+  p.card.classList.add('dragging');
+  document.querySelectorAll('#app .card[data-z]').forEach(c => { if (canDrop(p.src, c.dataset.z, Number(c.dataset.i))) c.classList.add('droptarget'); });
+  if (p.src.zone === 'team' || p.src.zone === 'bench') {
+    const bar = document.getElementById('actionbar');
+    if (bar) bar.innerHTML = `<div class="sellzone" id="sellzone">🗑️ Drop here to sell · +💰${R.sellValue(run, slotsOf(p.src.zone)[p.src.i])}</div>`;
+  }
+  if (navigator.vibrate) navigator.vibrate(15);
+  moveGhost(p.x, p.y);
+  DRAG.pend = null;
+  requestAnimationFrame(autoScroll);
+}
+function moveGhost(x, y) {
+  DRAG.x = x; DRAG.y = y;
+  if (DRAG.ghost) DRAG.ghost.style.transform = `translate(${x - DRAG.w / 2}px, ${y - DRAG.h * 0.6}px) scale(1.08) rotate(-3deg)`;
+  document.querySelectorAll('.droptarget.hover, .sellzone.hover').forEach(c => c.classList.remove('hover'));
+  const t = hitTarget(x, y); if (t) t.classList.add('hover');
+}
+function autoScroll() {
+  if (!DRAG.on) return;
+  const main = document.querySelector('#app main.scroll');
+  if (main) { if (DRAG.y < 140) main.scrollTop -= 10; else if (DRAG.y > window.innerHeight - 150) main.scrollTop += 10; }
+  requestAnimationFrame(autoScroll);
+}
+function hitTarget(x, y) {
+  if (DRAG.ghost) DRAG.ghost.style.display = 'none';
+  const el = document.elementFromPoint(x, y);
+  if (DRAG.ghost) DRAG.ghost.style.display = '';
+  if (!el) return null;
+  return el.closest('#sellzone') || el.closest('.card.droptarget');
+}
+function endDrag(x, y) {
+  const src = DRAG.src, t = hitTarget(x, y);
+  DRAG.on = false; if (DRAG.ghost) DRAG.ghost.remove(); DRAG.ghost = null;
+  setTimeout(() => { suppressClick = false; }, 60);
+  let res = null;
+  if (t && t.id === 'sellzone') res = R.sell(run, src.zone, src.i);
+  else if (t) {
+    const z = t.dataset.z, i = Number(t.dataset.i);
+    if (src.zone === 'shop') res = R.buy(run, src.i, { zone: z, i });
+    else if (src.zone === 'tshop') res = R.buyTrinket(run);
+    else { R.move(run, src, { zone: z, i }); res = { ok: true }; }
+  }
+  if (res) { if (res.msg) toast(res.msg); if (res.ok) saveRun(); }
+  ui.sel = null;
+  render();
+}
+function pointDown(e, x, y, touch) {
+  const card = e.target.closest && e.target.closest('#app .card[data-z]');
+  if (!card) return;
+  const src = dragSource(card); if (!src) return;
+  DRAG.pend = { src, card, x, y, x0: x, y0: y, touch };
+  if (touch) DRAG.pend.timer = setTimeout(beginDrag, 220);
+}
+function pointMove(e, x, y) {
+  if (DRAG.on) { e.preventDefault(); moveGhost(x, y); return; }
+  const p = DRAG.pend; if (!p) return;
+  const d = Math.hypot(x - p.x0, y - p.y0);
+  p.x = x; p.y = y;
+  if (p.touch) { if (d > 10) { clearTimeout(p.timer); DRAG.pend = null; } } // moved before the hold: it's a scroll
+  else if (d > 10) beginDrag();
+}
+function pointUp(x, y) {
+  if (DRAG.pend) { clearTimeout(DRAG.pend.timer); DRAG.pend = null; }
+  if (DRAG.on) endDrag(x, y);
+}
+document.addEventListener('touchstart', (e) => { const t = e.touches[0]; pointDown(e, t.clientX, t.clientY, true); }, { passive: true });
+document.addEventListener('touchmove', (e) => { const t = e.touches[0]; pointMove(e, t.clientX, t.clientY); }, { passive: false });
+document.addEventListener('touchend', (e) => { const t = e.changedTouches[0]; pointUp(t.clientX, t.clientY); });
+document.addEventListener('touchcancel', () => { if (DRAG.on) { DRAG.on = false; if (DRAG.ghost) DRAG.ghost.remove(); render(); } DRAG.pend = null; });
+document.addEventListener('mousedown', (e) => { if (e.button === 0) pointDown(e, e.clientX, e.clientY, false); });
+document.addEventListener('mousemove', (e) => pointMove(e, e.clientX, e.clientY));
+document.addEventListener('mouseup', (e) => pointUp(e.clientX, e.clientY));
+document.addEventListener('contextmenu', (e) => { if (e.target.closest && e.target.closest('.card[data-z]')) e.preventDefault(); });
 
 // ---------------------------------------------------------------- battle
 function startBattle() {
@@ -389,7 +583,7 @@ function startBattle() {
   const res = simulate(R.battleTeamFromSnap(me), R.battleTeamFromSnap(opp), { log: true });
   const won = res.winner === 0;
   const daysBefore = run.day;
-  const sum = R.finishBattle(run, won, opp);
+  const sum = R.finishBattle(run, won, opp, res.gains[0]);
   if (run.phase === 'over') finishRunStats();
   saveRun(); saveProf();
   ui.battle = { opp, me, res, sum, day: daysBefore, pt: 0, fi: 0, speed: prof.speed, done: false, last: 0, live: 0 };
@@ -560,6 +754,8 @@ function showResult() {
   el.innerHTML = `<div class="r-box ${won ? 'win' : 'lose'}"><div class="r-t">${won ? (tie ? 'Tie — you win!' : 'Victory!') : 'Defeat'}</div>
     <div class="sub">${b.res.t.toFixed(1)}s · your HP ${Math.ceil(b.res.hp[0])}/${b.res.maxHp[0]} · theirs ${Math.ceil(b.res.hp[1])}/${b.res.maxHp[1]}</div>
     ${rkLine}
+    ${b.res.gains[0].some(g => g > 0) ? `<div class="gains">${b.res.gains[0].map((g, i) => g > 0 ? `<span>${MON[b.me.team[i].id].name} +${Math.round(g * 100) / 100} dmg</span>` : '').join('')}</div>` : ''}
+    ${s.grew ? `<div class="sub">${esc(s.grew)}</div>` : ''}
     ${s.salvage ? `<div>🪙 Salvage +${s.salvage} gold</div>` : ''}${s.egg ? `<div>🥚 Trinkets +${s.egg} gold for the win</div>` : ''}
     <div class="sub">🏆 ${run.wins}/${RULES.winsToChampion} · ❤️ ${run.lives}</div>
     <button class="primary big" data-act="afterbattle">${over ? (run.result === 'champion' ? 'Claim the title 🏆' : 'See run summary') : `Day ${run.day} →`}</button></div>`;

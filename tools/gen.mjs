@@ -2,11 +2,11 @@
 // snapshots. Prints balance stats and (with --write) saves js/snapdata.js.
 // usage: node tools/gen.mjs [bots=600] [--write] [--seed=1]
 import { writeFileSync, existsSync, readFileSync } from 'node:fs';
-import { MON, MONS, TYPES, BOT_NAMES, RULES, TRINKET, price } from '../js/data.js?v=0.3';
-import { makeRng } from '../js/rng.js?v=0.3';
-import * as R from '../js/run.js?v=0.3';
-import { simulate } from '../js/battle.js?v=0.3';
-import { makeProfile, botDay } from '../js/bot.js?v=0.3';
+import { MON, MONS, TYPES, BOT_NAMES, RULES, TRINKET, price } from '../js/data.js?v=0.4';
+import { makeRng } from '../js/rng.js?v=0.4';
+import * as R from '../js/run.js?v=0.4';
+import { simulate } from '../js/battle.js?v=0.4';
+import { makeProfile, botDay } from '../js/bot.js?v=0.4';
 
 const args = process.argv.slice(2);
 const N = Number(args.find(a => /^\d+$/.test(a)) || 600);
@@ -64,7 +64,7 @@ for (let day = 1; day <= 20; day++) {
     }
     for (const [t, c] of Object.entries(types)) if (c >= 3) { const ts = typeStat(t); ts.n++; if (won) ts.w++; }
     for (const t of s.trinkets) { const x = stats.trk[t] || (stats.trk[t] = { n: 0, w: 0 }); x.n++; if (won) x.w++; }
-    R.finishBattle(b.run, won, opp.s);
+    R.finishBattle(b.run, won, opp.s, res.gains[0]);
     if (b.run.phase === 'over') stats.ends[b.run.result]++;
   }
 }
