@@ -2,11 +2,11 @@
 // snapshots. Prints balance stats and (with --write) saves js/snapdata.js.
 // usage: node tools/gen.mjs [bots=600] [--write] [--seed=1]
 import { writeFileSync, existsSync, readFileSync } from 'node:fs';
-import { MON, MONS, TYPES, BOT_NAMES, RULES, TRINKET, price } from '../js/data.js?v=0.2';
-import { makeRng } from '../js/rng.js?v=0.2';
-import * as R from '../js/run.js?v=0.2';
-import { simulate } from '../js/battle.js?v=0.2';
-import { makeProfile, botDay } from '../js/bot.js?v=0.2';
+import { MON, MONS, TYPES, BOT_NAMES, RULES, TRINKET, price } from '../js/data.js?v=0.3';
+import { makeRng } from '../js/rng.js?v=0.3';
+import * as R from '../js/run.js?v=0.3';
+import { simulate } from '../js/battle.js?v=0.3';
+import { makeProfile, botDay } from '../js/bot.js?v=0.3';
 
 const args = process.argv.slice(2);
 const N = Number(args.find(a => /^\d+$/.test(a)) || 600);
@@ -28,7 +28,7 @@ for (let i = 0; i < N; i++) {
 }
 
 const library = {};
-const stats = { byDay: {}, mon: {}, type: {}, trk: {}, ends: { champion: 0, out: 0 }, sudden: 0, battles: 0, ties: 0 };
+const stats = { pred: { n: 0, ok: 0 }, predP: { n: 0, ok: 0 }, byDay: {}, mon: {}, type: {}, trk: {}, ends: { champion: 0, out: 0 }, sudden: 0, battles: 0, ties: 0 };
 const monStat = (id) => stats.mon[id] || (stats.mon[id] = { n: 0, w: 0 });
 const typeStat = (t) => stats.type[t] || (stats.type[t] = { n: 0, w: 0 });
 
@@ -48,6 +48,8 @@ for (let day = 1; day <= 20; day++) {
     if (opp.b === b && snaps.length > 1) opp = snaps[(snaps.indexOf(opp) + 1) % snaps.length];
     const res = simulate(R.battleTeamFromSnap(s), R.battleTeamFromSnap(opp.s));
     const won = res.winner === 0;
+    if (s.rating !== opp.s.rating) { stats.pred.n++; if ((s.rating > opp.s.rating) === won) stats.pred.ok++; }
+    if (s.power !== opp.s.power) { stats.predP.n++; if ((s.power > opp.s.power) === won) stats.predP.ok++; }
     stats.battles++; ds.n++; ds.t += res.t; ds.tmin = Math.min(ds.tmin, res.t); ds.tmax = Math.max(ds.tmax, res.t);
     if (res.t > RULES.battleSeconds) { stats.sudden++; ds.sudden++; }
     if (res.t < 15) ds.under15++;
@@ -70,6 +72,7 @@ for (let day = 1; day <= 20; day++) {
 // ---------- report ----------
 const pct = (a, b) => b ? (100 * a / b).toFixed(0) + '%' : '-';
 console.log(`bots ${N}, battles ${stats.battles}, sudden death ${pct(stats.sudden, stats.battles)}, ties ${stats.ties}`);
+console.log(`hidden rating predicts the winner ${pct(stats.pred.ok, stats.pred.n)} of the time; shown Power ${pct(stats.predP.ok, stats.predP.n)}`);
 console.log(`champions ${stats.ends.champion} (${pct(stats.ends.champion, N)}), knocked out ${stats.ends.out}`);
 console.log('day  n    avgT  min  max  <15s  sudden avgPow  L2%  L3%  winnerHP');
 for (const [d, s] of Object.entries(stats.byDay)) {

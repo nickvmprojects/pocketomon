@@ -1,9 +1,9 @@
 // Pocketomon UI: title, events, shop, battle replay, run end. Mobile first, tap to select.
-import * as D from './data.js?v=0.2';
-import * as R from './run.js?v=0.2';
-import { simulate } from './battle.js?v=0.2';
-import { monSvg } from './art.js?v=0.2';
-import { LIBRARY } from './snapdata.js?v=0.2';
+import * as D from './data.js?v=0.3';
+import * as R from './run.js?v=0.3';
+import { simulate } from './battle.js?v=0.3';
+import { monSvg } from './art.js?v=0.3';
+import { LIBRARY } from './snapdata.js?v=0.3';
 
 const { MON, TYPES, FX, RULES } = D;
 const $app = document.getElementById('app');
@@ -56,16 +56,15 @@ const rollCls = (x) => x >= 1.1 ? 'good' : x <= 0.9 ? 'bad' : '';
 function card(m, o = {}) {
   if (!m) return `<div class="card empty ${o.sel ? 'sel' : ''} ${o.target ? 'target' : ''}" data-z="${o.zone}" data-i="${o.i}">${o.label ? `<span class="slotno">${o.label}</span>` : ''}</div>`;
   const def = MON[m.id], T = TYPES[def.type];
-  let extra = '';
-  if (o.price !== undefined) extra += `<div class="price ${run && run.gold < o.price ? 'no' : ''}">💰${o.price}</div>`;
-  if (o.locked) extra += `<div class="lock">🔒</div>`; // below the price badge
-  if (o.own) extra += `<div class="own">${o.own}</div>`;
-  return `<div class="card t-${def.type} ${o.sel ? 'sel' : ''} ${o.target ? 'target' : ''}" data-z="${o.zone}" data-i="${o.i}" style="--tc:${T.color};--td:${T.dark}">
-    <div class="tier">T${def.tier}</div><div class="lv">${m.lvl && o.price === undefined ? stars(m.lvl) : ''}</div>
+  const shop = o.price !== undefined;
+  const marks = (D.TRIGGERS[m.id] ? '<span title="Has a trigger">🔔</span>' : '') + (D.AURAS[m.id] ? '<span title="Has an aura">✨</span>' : '');
+  return `<div class="card t-${def.type} ${o.sel ? 'sel' : ''} ${o.target ? 'target' : ''} ${o.small ? 'small' : ''}" data-z="${o.zone}" data-i="${o.i}" style="--tc:${T.color};--td:${T.dark}">
+    <div class="c-top"><span class="tierpill t${def.tier}">T${def.tier}</span>${shop ? `<span class="price ${run && run.gold < o.price ? 'no' : ''}">💰${o.price}</span>` : (m.lvl ? `<span class="lv">${stars(m.lvl)}</span>` : '')}</div>
+    ${marks ? `<div class="marks">${marks}</div>` : ''}${o.locked ? '<div class="lock">🔒</div>' : ''}
     <div class="art">${monSvg(m.id)}</div>
-    <div class="nm">${def.name}</div>${extra}</div>`;
+    ${o.own ? `<div class="own ${o.own.startsWith('⤴') ? 'merge' : ''}">${o.own}</div>` : ''}
+    <div class="nm">${def.name}</div></div>`;
 }
-
 function detail(m, ctx) {
   const def = MON[m.id], T = TYPES[def.type];
   const lvl = m.lvl || 1;
@@ -82,12 +81,15 @@ function detail(m, ctx) {
       <button data-act="${ctx.zone === 'team' ? 'tobench' : 'toteam'}">${ctx.zone === 'team' ? 'To bench' : 'To team'}</button>`;
     if (lvl < 3) note = `<div class="note dim">${lvl === 1 ? 'Merge 3 copies → level 2.' : 'Merge with another level 2 → level 3.'}</div>`;
   }
-  return `<div class="detail" style="--tc:${T.color}">
+  return `<div class="detail ${ctx.sheet ? 'sheet' : ''}" style="--tc:${T.color}">
+    ${ctx.sheet ? '<button class="sheetx" data-act="deselect">✕</button>' : ''}
     <div class="d-head"><div class="d-art">${monSvg(m.id)}</div>
       <div><div class="d-name">${def.name} <span class="lvtxt">${ctx.zone === 'dex' ? '' : 'Lv' + lvl}</span></div>
-      <div class="sub"><span class="typechip" style="background:${T.color}">${T.icon} ${T.name}</span> Tier ${def.tier} · ⏱ every ${def.cd}s
-      ${ctx.zone !== 'dex' ? ` · <span class="${rollCls(m.atk)}">ATK ${Math.round(m.atk * 100)}%</span> · <span class="${rollCls(m.pow)}">POW ${Math.round(m.pow * 100)}%</span>` : ''}</div></div></div>
+      <div class="d-meta"><span class="typechip" style="background:${T.color}">${T.icon} ${T.name}</span> <span class="tierpill t${def.tier}">Tier ${def.tier}</span> <span>⏱ ${def.cd}s</span></div>
+      ${ctx.zone !== 'dex' ? `<div class="d-meta"><span class="${rollCls(m.atk)}">ATK ${Math.round(m.atk * 100)}%</span> <span class="${rollCls(m.pow)}">POW ${Math.round(m.pow * 100)}%</span> <span class="dim">⚡ ${Math.round(R.monPower({ ...m, lvl }))}</span></div>` : ''}</div></div>
     <div class="chips">${moveChips(def, lvl, m.atk || 1, m.pow || 1)}</div>
+    ${D.TRIGGERS[m.id] ? `<div class="trigline">🔔 ${esc(D.triggerText(def, lvl, m.pow || 1))}</div>` : ''}
+    ${D.AURAS[m.id] ? `<div class="trigline aura">✨ ${esc(D.auraText(def, lvl))}</div>` : ''}
     <div class="flavor">${esc(def.flavor)}</div>${note}
     ${btns ? `<div class="btns">${btns}</div>` : ''}</div>`;
 }
@@ -108,10 +110,10 @@ function teamRows(opts = {}) {
   const tgt = opts.target;
   const isSel = (z, i) => ui.sel && ui.sel.zone === z && ui.sel.i === i;
   const tOk = (m) => tgt && R.validTarget(run, tgt, m);
-  return `<h3>Team <span class="dim">· acts in slot order, left first</span></h3>
-    <div class="row6">${run.team.map((m, i) => card(m, { zone: 'team', i, sel: isSel('team', i), label: i + 1, target: tOk(m) })).join('')}</div>
-    <h3>Bench <span class="dim">· doesn't fight</span></h3>
-    <div class="row6 bench">${run.bench.map((m, i) => card(m, { zone: 'bench', i, sel: isSel('bench', i), target: tOk(m) })).join('')}</div>`;
+  return `<div class="sect"><h3>Team</h3><span class="dim">front row casts first · back row sits behind it</span></div>
+    <div class="grid3 team">${run.team.map((m, i) => card(m, { zone: 'team', i, sel: isSel('team', i), label: i < 3 ? `Front ${i + 1}` : `Back ${i + 1}`, target: tOk(m) })).join('')}</div>
+    <div class="sect"><h3>Bench</h3><span class="dim">doesn't fight</span></div>
+    <div class="gridb" style="--n:${run.bench.length}">${run.bench.map((m, i) => card(m, { zone: 'bench', i, sel: isSel('bench', i), target: tOk(m), small: true })).join('')}</div>`;
 }
 
 // ---------------------------------------------------------------- screens
@@ -171,9 +173,9 @@ function renderShop() {
   const sel = ui.sel;
   let selM = null, ctx = null;
   if (sel) {
-    if (sel.zone === 'shop') { const o = run.shop[sel.i]; if (o && o.mon) { selM = o.mon; ctx = { zone: 'shop', locked: o.locked }; } }
-    else { selM = (sel.zone === 'team' ? run.team : run.bench)[sel.i]; if (selM) ctx = { zone: sel.zone }; }
-    if (!selM && sel.zone === 'shop') ui.sel = null;
+    if (sel.zone === 'shop') { const o = run.shop[sel.i]; if (o && o.mon) { selM = o.mon; ctx = { zone: 'shop', locked: o.locked, sheet: true }; } }
+    else { selM = (sel.zone === 'team' ? run.team : run.bench)[sel.i]; if (selM) ctx = { zone: sel.zone, sheet: true }; }
+    if (!selM) ui.sel = null;
   }
   const rc = R.rerollCostNow(run);
   const freeR = run.freeRerolls + run.rerollBank;
@@ -182,17 +184,17 @@ function renderShop() {
   const tpanel = tq ? `<div class="tpick"><h2>✨ Merge reward!</h2><div class="sub">Pick a tier ${tq.tier} trinket. It lasts the whole run.${run.trinketQueue.length > 1 ? ` (${run.trinketQueue.length - 1} more after this)` : ''}</div>
     <div class="choices">${tq.options.map(id => { const t = D.TRINKET[id]; return `<button class="choice" data-act="picktrinket" data-id="${id}">
       <div class="c-ic">${t.icon}</div><div class="c-t">${esc(t.name)} <span class="ttier t${t.tier}">T${t.tier}</span></div><div class="c-d">${esc(t.desc)}</div></button>`; }).join('')}</div></div>` : '';
-  $app.innerHTML = `${topbar()}<main class="scroll">
+  const ownTag = (id) => { const n = R.owned(run).filter(x => x.m.id === id && x.m.lvl === 1).length; return n ? (n >= 2 ? '⤴ MERGE' : `own ${n}`) : ''; };
+  $app.innerHTML = `${topbar()}<main class="scroll ${selM ? 'with-sheet' : ''}">
     ${tpanel}
     ${teamRows()}
-    <h3>Shop <span class="dim">· tiers up to ${D.maxTier(run.day)}${run.sale ? ' · <b class="good">SALE −1</b>' : ''}</span></h3>
-    <div class="row6 shop">${run.shop.map((o, i) => o.mon ? card(o.mon, {
-      zone: 'shop', i, price: R.offerPrice(run, MON[o.mon.id]), locked: o.locked, sel: sel && sel.zone === 'shop' && sel.i === i,
-      own: (() => { const n = R.owned(run).filter(x => x.m.id === o.mon.id && x.m.lvl === 1).length; return n ? (n >= 2 ? '⤴ merge' : `own ${n}`) : ''; })(),
-    }) : `<div class="card sold">sold</div>`).join('')}</div>
-    <div class="hint">${selM ? '' : 'Tap a mon to see it. Tap a shop mon then a slot to buy there; tap two of yours to swap.'}</div>
-    ${selM ? detail(selM, ctx) : ''}
+    <div class="sect"><h3>Shop</h3><span class="dim">tiers up to ${D.maxTier(run.day)}${run.sale ? ' · <b class="good">SALE −5</b>' : ''}</span></div>
+    <div class="grid3 shop">${run.shop.map((o, i) => o.mon ? card(o.mon, {
+      zone: 'shop', i, price: R.offerPrice(run, MON[o.mon.id]), locked: o.locked, sel: sel && sel.zone === 'shop' && sel.i === i, own: ownTag(o.mon.id),
+    }) : `<div class="card sold">SOLD</div>`).join('')}</div>
+    <div class="hint">Tap a mon to see it. Tap a shop mon, then an empty slot, to buy it there. Tap two of yours to swap.</div>
   </main>
+  ${selM ? detail(selM, ctx) : ''}
   <footer class="actionbar">
     <button data-act="reroll" ${run.gold < rc ? 'disabled' : ''}>🎲 Reroll ${rc ? '💰' + rc : `free (${freeR})`}</button>
     <button class="primary" data-act="battle" ${tq ? 'disabled' : ''}>⚔️ Battle!</button>
@@ -206,7 +208,7 @@ function renderOver() {
     <h2 class="center">${champ ? 'Champion!' : 'Run over'}</h2>
     <div class="center sub">${run.mode === 'ranked' ? 'Ranked' : 'Normal'} run · ${run.wins} wins · ${run.losses} losses · reached day ${run.day}</div>
     ${rankChangeLine()}
-    <h3>Final team</h3><div class="row6">${run.team.map((m, i) => card(m, { zone: 'final', i })).join('')}</div>
+    <h3>Final team</h3><div class="grid3 team">${run.team.map((m, i) => card(m, { zone: 'final', i })).join('')}</div>
     <h3>Battles</h3><div class="hist">${run.history.map(h => `<div class="${h.won ? 'good' : 'bad'}">D${h.day} ${h.won ? 'W' : 'L'} vs ${esc(h.opp)} <span class="dim">(⚡${h.power} vs ${h.oppPower})</span></div>`).join('')}</div>
     <div class="menu"><button class="primary big" data-act="new" data-mode="${run.mode}">Play again</button><button class="big" data-act="title">Title</button></div>
   </main>`;
@@ -235,9 +237,12 @@ function helpHtml() {
   <p><b>Battles</b> are automatic. Every mon casts its move each time its cooldown fills, in slot order (slot 1 first). All mons hit the enemy team's <b>shared HP bar</b>. After 30s, <b>sudden death</b> drains both teams faster every second. Ties go to you.</p>
   <p><b>Shop</b>: up to 6 mons on your team, extras wait on the bench. Each shop copy has its own ATK and POW roll. Buy <b>3 copies</b> of a mon to merge it into <b>level 2</b>, and two level 2s into <b>level 3</b>. Merging keeps the best ATK and POW of the copies. Tier never changes. Lock offers you want to keep for tomorrow; unspent gold carries over.</p>
   <p><b>Each run uses 5 random types</b> in the shop, so copies show up often enough to merge.</p>
+  <p><b>Team grid</b>: slots 1-3 are the front row and cast first; 4-6 are the back row. "Behind" means the slot directly behind; "adjacent" means left, right, front or behind (no diagonals).</p>
+  <p><b>🔔 Triggers</b>: some mons react to things (being bought or sold, levelling up, trinkets, rerolls, wins, allies casting, low HP, sudden death...). A mon is never triggered by a copy of itself, and fires at most once per chain. <b>✨ Auras</b> constantly buff nearby (or far) allies.</p>
+  <p><b>⚡ Power</b> is just the sum of your mons' numbers, for fun. It isn't how strong your team really is: Ranked uses a hidden rating.</p>
   <p><b>Merge rewards</b>: every merge lets you pick 1 of 3 <b>trinkets</b> of the merged mon's tier (tier 1 mon → tier 1 trinkets, up to tier 5). Trinkets last the whole run.</p>
   <p><b>Prices</b>: a mon costs about 10 × its tier, ±5 depending on how strong it is. Selling refunds half per copy.</p>
-  <p><b>Ranked</b>: opponents are picked close to your team's ⚡ power (a bit above it at higher ranks). Your rank moves when the run ends: <b>6+ wins → rank up</b>, <b>5 wins → rank holds</b>, <b>under 5 → rank down</b>. Ranks: ${D.RANKS.map(r => r.icon + ' ' + r.name).join(' → ')}.</p>
+  <p><b>Ranked</b>: opponents are picked to match your team's hidden strength (a bit above it at higher ranks). Your rank moves when the run ends: <b>6+ wins → rank up</b>, <b>5 wins → rank holds</b>, <b>under 5 → rank down</b>. Ranks: ${D.RANKS.map(r => r.icon + ' ' + r.name).join(' → ')}.</p>
   <h3>Types</h3>${D.TYPE_KEYS.map(k => `<p><b>${TYPES[k].icon} ${TYPES[k].name} (${TYPES[k].mech})</b>: ${TYPES[k].blurb}</p>`).join('')}
   <p class="dim">Healing above max HP turns into shield at half value. Shield caps at 50% of max HP.</p>`;
 }
@@ -289,6 +294,7 @@ function tapSlot(zone, i) {
 const actions = {
   continue() { ui.screen = 'run'; render(); },
   splash() { splashI++; render(); },
+  deselect() { ui.sel = null; render(); },
   picktrinket(el) { const res = R.chooseTrinket(run, el.dataset.id); toast(res.msg); saveRun(); render(); },
   new(el) {
     const mode = el.dataset.mode;
@@ -411,7 +417,12 @@ function buildBattle() {
     <div class="b-mid"><div class="timer" id="timer">30.0</div><div class="banner" id="banner"></div></div>
     ${bSide(b.me, 0, 'You')}
     <div class="b-ctl">${[1, 2, 4].map(s => `<button class="spd" data-act="speed" data-s="${s}">${s}×</button>`).join('')}<button data-act="skip">Skip ⏭</button></div>
-    <div id="fxlayer"></div><div id="bresult" class="hidden"></div></div>`;
+    <div id="fxlayer"></div><div id="bresult" class="hidden"></div>
+    <div class="countdown" id="countdown"><div class="cd-vs">Day ${b.day} · vs</div>
+      <div class="cd-opp">${b.opp.avatar ? D.AVATAR[b.opp.avatar].face + ' ' : ''}${esc(b.opp.name)}</div>
+      <div class="cd-vs">${b.opp.avatar ? esc(D.AVATAR[b.opp.avatar].name) + ' · ' : ''}⚡ ${b.opp.power}</div>
+      <div class="cd-n" id="cdn">3</div></div></div>`;
+  b.cd = 3; b.cdShown = 3;
   markSpeed();
   applyState(b.res.log[0]);
   handleEvents(b.res.log[0].ev);
@@ -422,8 +433,17 @@ function stepBattle(ts) {
   const b = ui.battle;
   if (!b || b.done) return;
   if (!b.last) b.last = ts;
-  b.pt += Math.min(0.1, (ts - b.last) / 1000) * b.speed;
+  const dtReal = Math.min(0.1, (ts - b.last) / 1000);
   b.last = ts;
+  // 3-second countdown (real time, any speed), then FIGHT!
+  if (b.cd > -0.6) {
+    b.cd -= dtReal;
+    const n = b.cd > 0 ? Math.ceil(b.cd) : 0;
+    if (n !== b.cdShown) { b.cdShown = n; const el = $('cdn'); if (el) { el.textContent = n || 'FIGHT!'; el.classList.toggle('fight', !n); el.style.animation = 'none'; void el.offsetWidth; el.style.animation = ''; } }
+    if (b.cd <= -0.6) { const c = $('countdown'); if (c) c.remove(); }
+    if (b.cd > 0) { requestAnimationFrame(stepBattle); return; }
+  }
+  b.pt += dtReal * b.speed;
   const log = b.res.log;
   let lastF = null;
   while (b.fi < log.length && log[b.fi].t <= b.pt) { lastF = log[b.fi]; handleEvents(lastF.ev); b.fi++; }
@@ -434,6 +454,7 @@ function stepBattle(ts) {
 
 function skipBattle() {
   const b = ui.battle; if (b.done) return;
+  if (b.cd > 0) { b.cd = 0; const c = $('countdown'); if (c) c.remove(); b.cd = -1; return; } // first Skip skips the countdown
   b.done = true;
   const log = b.res.log;
   applyState(log[log.length - 1]);
@@ -515,7 +536,8 @@ function handleEvents(evs) {
       if (e.start) { pop(el, '✨'); continue; }
       if (e.echo) pop(el, '🎵');
       projectile(el, $('hp' + (1 - e.s)), TYPES[def.type].icon);
-    } else if (e.k === 'dmg') { dmg[e.s][e.kind] = (dmg[e.s][e.kind] || 0) + e.v; }
+    } else if (e.k === 'trig') { pop($(`bm${e.s}${e.pos}`), '🔔'); shake($(`bm${e.s}${e.pos}`)); }
+    else if (e.k === 'dmg') { dmg[e.s][e.kind] = (dmg[e.s][e.kind] || 0) + e.v; }
     else if (e.k === 'heal' && e.v >= 0.5) floatText(e.s, `+${fmt(e.v)}`, 'heal');
     else if (e.k === 'shield' && e.v >= 0.5) floatText(e.s, `🛡️+${fmt(e.v)}`, 'shield');
     else if (e.k === 'fx' && e.fx === 'freeze') { if (e.pos !== undefined) pop($(`bm${e.s}${e.pos}`), '🧊'); else for (let i = 0; i < 6; i++) pop($(`bm${e.s}${i}`), '🧊'); }

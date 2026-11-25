@@ -210,3 +210,64 @@ h3 .dim { text-transform: none; letter-spacing: 0; font-weight: 400; }
 .card:nth-child(2n) .art svg, .bmon:nth-child(2n) .art svg { animation-delay: -0.8s; }
 .card:nth-child(3n) .art svg, .bmon:nth-child(3n) .art svg { animation-delay: -1.6s; }
 @keyframes idle { 0%, 100% { transform: translateY(0) scale(1, 1); } 50% { transform: translateY(-1.5px) scale(1.02, 0.98); } }
+
+/* ================= v0.3 shop layout: big cards, bottom sheet, readable type ================= */
+html, body { font-size: 15px; }
+.sect { display: flex; align-items: baseline; gap: 8px; margin: 14px 0 6px; }
+.sect h3 { margin: 0; font-size: 13px; color: #c9d0f0; }
+.sect .dim { font-size: 12.5px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.gridb { display: grid; grid-template-columns: repeat(var(--n), 1fr); gap: 6px; }
+.card { aspect-ratio: 1 / 1; border-radius: 14px; border-width: 2.5px; justify-content: flex-end; }
+.card.small { aspect-ratio: 0.9; border-radius: 12px; }
+.card .art { inset: 24px 6px 24px; }
+.card.small .art { inset: 20px 3px 20px; }
+.card .c-top { position: absolute; top: 5px; left: 5px; right: 5px; display: flex; justify-content: space-between; align-items: center; z-index: 2; }
+.card .nm { font-size: 13px; padding: 3px 2px 4px; background: #0b0e20d9; letter-spacing: 0.01em; }
+.card.small .nm { font-size: 11.5px; }
+.card .lv { position: static; font-size: 13px; color: var(--gold); letter-spacing: -1px; }
+.card.small .lv { font-size: 11px; }
+.card .price { position: static; font-size: 13.5px; font-weight: 900; background: #0b0e20e6; border-radius: 8px; padding: 1px 6px; border: 1.5px solid #ffd54a88; }
+.card .price.no { color: #ff8a8a; border-color: #ff6b6b88; }
+.card .tier { display: none; }
+.tierpill { display: inline-block; font-size: 11.5px; font-weight: 900; padding: 1px 6px; border-radius: 7px; color: #1b1424; line-height: 1.35; }
+.tierpill.t1 { background: #d7d7d7; } .tierpill.t2 { background: #7ce39a; } .tierpill.t3 { background: #6fbcff; } .tierpill.t4 { background: #d08cff; } .tierpill.t5 { background: #ffb53d; }
+.card.small .tierpill { font-size: 10px; padding: 0 4px; }
+.card .marks { position: absolute; left: 5px; top: 27px; font-size: 13px; display: flex; flex-direction: column; gap: 1px; z-index: 2; }
+.card.small .marks { top: 22px; font-size: 11px; }
+.card .lock { top: 30px; right: 6px; font-size: 15px; }
+.card .own { position: absolute; top: auto; bottom: 25px; left: 50%; transform: translateX(-50%); font-size: 11px; padding: 1px 7px; border-radius: 8px; white-space: nowrap; }
+.card .own.merge { background: #6fe08a; animation: pulse3 1s ease-in-out infinite; }
+@keyframes pulse3 { 50% { transform: translateX(-50%) scale(1.08); } }
+.card.empty { border-width: 2px; }
+.slotno { top: 50%; left: 0; right: 0; transform: translateY(-50%); text-align: center; font-size: 12px; color: #4a5694; text-transform: uppercase; letter-spacing: 0.08em; }
+.card.sold { aspect-ratio: 1 / 1; font-size: 13px; font-weight: 800; letter-spacing: 0.15em; color: #3a4378; }
+.card.sel { outline: 3px solid #fff; outline-offset: 2px; transform: translateY(-3px); box-shadow: 0 6px 16px #0008; }
+.hint { font-size: 13px; margin: 12px 4px; }
+/* bottom sheet */
+.scroll.with-sheet { padding-bottom: 46vh; }
+.detail.sheet { position: fixed; left: 50%; transform: translateX(-50%); width: min(560px, 100%); bottom: calc(66px + env(safe-area-inset-bottom)); max-height: 52vh; overflow-y: auto; margin: 0; border-radius: 18px 18px 0 0; border-bottom: none; padding: 14px 14px 12px; z-index: 20; box-shadow: 0 -10px 30px #000a; animation: sheetup 0.18s ease-out; background: linear-gradient(#262f5c, #1e254b); }
+@keyframes sheetup { from { transform: translate(-50%, 30px); opacity: 0; } }
+.sheetx { position: absolute; top: 8px; right: 8px; padding: 2px 10px; font-size: 15px; border-radius: 10px; }
+.d-art { width: 76px; height: 76px; }
+.d-name { font-size: 21px; }
+.d-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13.5px; margin-top: 4px; }
+.chip { font-size: 13.5px; padding: 3px 8px; }
+.trigline { margin-top: 7px; font-size: 14px; background: #2d2350; border: 1.5px solid #ffd54a77; border-radius: 10px; padding: 6px 9px; line-height: 1.35; }
+.trigline.aura { background: #1f3550; border-color: #8ad8ff77; }
+.flavor { font-size: 13px; margin-top: 6px; }
+.note { font-size: 13px; }
+.btns button { font-size: 15px; padding: 11px 10px; }
+.actionbar button { font-size: 16px; }
+.topbar .tb-r span { font-size: 15.5px; }
+.subbar { font-size: 13px; }
+.typechip.sm { font-size: 12px; padding: 1px 7px; }
+.choice .c-t { font-size: 16px; }
+.choice .c-d { font-size: 13.5px; }
+/* battle countdown + trigger pop */
+.countdown { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 6; background: radial-gradient(circle, #1d2346f2, #070914f2); pointer-events: none; text-align: center; }
+.countdown .cd-vs { font-size: 15px; color: #c9d0f0; margin-bottom: 6px; }
+.countdown .cd-opp { font-family: var(--title); font-size: 24px; font-weight: 900; margin-bottom: 14px; }
+.countdown .cd-n { font-family: var(--title); font-size: 96px; font-weight: 900; color: #ffd54a; text-shadow: 4px 4px 0 #d63a5e, 8px 8px 0 #1b1424; animation: cdpop 1s ease-out; }
+.countdown .cd-n.fight { font-size: 64px; color: #fff; }
+@keyframes cdpop { 0% { transform: scale(2.2); opacity: 0; } 25% { transform: scale(1); opacity: 1; } 100% { transform: scale(0.9); opacity: 0.85; } }

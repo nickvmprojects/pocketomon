@@ -1,4 +1,4 @@
-# Pocketomon — design v0.2
+# Pocketomon — design v0.3
 
 Simple asynchronous team auto battler. Players buy mons in a shop, merge copies, and fight one 30 second battle per day against another trainer's same-day snapshot.
 
@@ -45,6 +45,19 @@ Simple asynchronous team auto battler. Players buy mons in a shop, merge copies,
 
 Flat amounts (hits, burn, heal, shield, poison, doom, regen, scrap) are multiplied by a **tier compression** factor (T1 1.6, T2 1.35, T3 1.1, T4 0.95, T5 0.85) so day 1 fights finish in time and late fights don't end in 5 seconds. The UI always shows final values.
 
+## Team grid and auras (v0.3)
+- Slots 1-3 (index 0-2) are the **front row**, slots 4-6 the **back row**; slot 4 is behind slot 1. Cast order is still slot 1 → 6.
+- **Adjacent** = left, right, front or behind neighbour (no diagonals). **Behind** = directly behind, **front** = directly in front.
+- **Echo** uses the grid: Echo front → the ally in front (else an adjacent ally), Echo behind → the ally behind, Echo both → front and behind.
+- **Auras** (13 mons, `AURAS` in data.js): ongoing +ATK / +POW / +speed % to the ally in front, behind, adjacent allies, or all non-adjacent allies. Scaled ×1 / 1.5 / 2 by level. Several auras on one mon add up; auras are computed from base stats so an aura never strengthens another aura.
+
+## Triggers (v0.3)
+Every mon keeps its cooldown cast. 43 mons also have one trigger (`TRIGGERS` in data.js):
+- **Combat:** ally casts (filtered by type or by position: front / behind / adjacent), your team drops below 50% (once), the enemy drops below 50% (once), sudden death starts, your team gains shield, your team is healed, enemy Doom detonates.
+- **Shop / run:** bought, sold, level up (merge), trinket gained, ally sold, reroll, after a win, after a loss.
+- **Actions:** cast now with cooldown reset (rare: Wickwisp, Coilbee, Kazooka, Rainbeau, Monolith, Banshriek), apply an effect (scaled like the move), a % of the triggering amount (damage / heal / shield), permanent ATK/POW growth (self, a type, the mon in front, a random ally of a type), or gold.
+- **Rules:** a mon is never triggered by a copy of itself (same species, any level), and each mon fires at most once per trigger chain, which makes loops impossible. No rate limits and no growth caps: balanced by simulation instead. Permanent growth is stored on the mon, so snapshots carry it.
+
 ## Events (day 2+)
 Gold (10 + 3 × day), wild mon (free, tier = shop max or one below), mystery egg (one tier above the shop), training (+20% ATK), meditation (+20% POW), trinket (shop's top tier), hot springs (+10% HP), bag of dice (+4 free rerolls), sale (−5 gold per mon today), cloning vat (copy a level 1 mon, day 3+), coin flip (+30 / −10), lucky charm (+1 life).
 
@@ -60,8 +73,9 @@ Captain Brawn (+15% HP), Merchant Mira (+8 gold/day), Scholar Quill (6 shop offe
 
 ## Modes and ranks
 - **Normal**: opponent = random snapshot from the same day.
-- **Ranked**: opponent = one of the 5 same-day snapshots closest to your **team power** × (1 + 3% × rank index). The rank moves **once, when the run ends**, by total wins: **6+ wins → up one rank, exactly 5 → holds, under 5 → down one**. Abandoning a ranked run counts with the wins you have. Ranks: Styrofoam → Wood → Iron → Bronze → Silver → Gold → Platinum → Diamond. (v0.1 RP converts to a rank at 100 RP per rank.)
-- **Team power** = Σ tierPower (10/14/19/25/32) × levelPower (1/1.8/2.8) × avg(ATK, POW), × HP multiplier, × (1 + 1.5% per tier of battle trinkets).
+- **Ranked**: opponent = one of the 5 same-day snapshots whose **hidden rating** is closest to yours × (1 + 3% × rank index). The rank moves once at run end: **6+ wins up, 5 holds, under 5 down**.
+- **Hidden rating** (`rateTeam` in battle.js): kill time = seconds to empty a passive dummy with the team's own HP; survive time = seconds lasted against a par attacker dealing HP/24 per second (75% hits affected by chill/weaken/expose, 25% piercing). Rating = survive / kill. Stored in every snapshot; computed for the player when the opponent is picked. It predicts the winner of real bot fights ~72% of the time (the shown Power: ~56%).
+- **Shown ⚡ Power**: the plain sum of the team's stat numbers (hit + every effect value, with level, rolls and growth; cooldowns ignored). For the player to enjoy, deliberately not the real strength.
 
 ## Snapshots
 - v0.1 has no server. Opponents come from `js/snapdata.js`: 800 bot runs simulated day by day with the real rules by `tools/gen.mjs`, 50 snapshots kept per day spread across power. Days beyond the library reuse the last available day at the current day's HP.
@@ -69,7 +83,7 @@ Captain Brawn (+15% HP), Merchant Mira (+8 gold/day), Scholar Quill (6 shop offe
 - Next step for real async play: a tiny API on the VM that stores player snapshots per day/mode and serves matches (same snapshot format as the library).
 
 ## Balance (tools/balance.mjs + tools/gen.mjs)
-- `node tools/balance.mjs 3 4000` runs passes of 4,000 bot runs. Half the bots are "informed" (they over-value mons that won most in the previous pass), so a strong mon shows up as overused.
-- Each pass nudges `TUNE` (a multiplier on all of a mon's numbers) so its win rate lands near 50% + 0.8 points per gold of COST_ADJ: pricier mons are meant to be a bit stronger per slot. `--fresh` re-derives COST_ADJ from raw strength.
-- v0.2 result (3,000 runs): average battle 21–26s, ~20% reach sudden death, ~21% of bot runs become Champion. Type stacks win 45–55%. Within each tier, mons win 44–58%, and no mon is fielded more than 1.4× its fair share by informed bots.
-- Regenerate the opponent library after any balance change: `node tools/gen.mjs 1200 --write`.
+- `node tools/balance.mjs 4 3000` runs passes of 3,000 bot runs. Half the bots are "informed" (they over-value mons that won most in the previous pass), so a strong mon shows up as overused. Each pass nudges `TUNE` toward 50% win rate + 0.8 pt per gold of `COST_ADJ`. `--fresh` re-derives `COST_ADJ` (−5..+5) from raw strength.
+- Bots place Echo mons and "when the ally in front casts" mons directly behind their strongest front-row mon, and "boost the ally behind" aura mons in the front row.
+- v0.3 result (2,000 runs): ~16% of battles reach sudden death, ~20% of bot runs become Champion. Type stacks win 45–55%. Most mons win 43–58% within their tier. Trashling, Binbot and Gearwolf are picked about 2× a fair share by informed bots (growth carries) but win at normal rates.
+- Regenerate the opponent library after any balance change: `node tools/gen.mjs 2000 --write`.

@@ -1,7 +1,7 @@
 // Bot players: used to build the snapshot library and for balance simulations.
 // Deliberately imperfect: they like favourite types, reroll a set amount and arrange simply.
-import { MON, TYPES, TIER_POWER, LV_POWER, ECHO_KEYS, RULES, TRINKET, isBattleTrinket, price } from './data.js?v=0.2';
-import * as R from './run.js?v=0.2';
+import { MON, TYPES, TIER_POWER, LV_POWER, ECHO_KEYS, RULES, TRINKET, isBattleTrinket, price, TRIGGERS, AURAS } from './data.js?v=0.3';
+import * as R from './run.js?v=0.3';
 
 const SUPPORT_FRONT = ['rock', 'electric', 'grass', 'psychic', 'ice'];
 
@@ -100,18 +100,20 @@ export function arrange(run, prof) {
     const other = team.filter(m => !SUPPORT_FRONT.includes(MON[m.id].type));
     ordered = [...sup, ...other];
   } else ordered = team.slice();
-  // put echo mons right behind the strongest non-echo mon
-  const echoes = ordered.filter(m => ECHO_KEYS.some(k => MON[m.id].fx[k]));
-  if (echoes.length) {
-    const base = ordered.filter(m => !echoes.includes(m));
-    const out = [];
-    let best = base.slice().sort((a, b) => instValue(b) - instValue(a))[0];
-    for (const m of base) { out.push(m); if (m === best) out.push(...echoes); }
-    if (!best) out.push(...echoes);
-    ordered = out;
-  }
+  // grid: slots 0-2 front row, 3-5 back row. Echo mons and "when the ally in front casts" mons go
+  // directly behind the strongest front-row mon; "boost the ally behind" aura mons go in the front row.
+  const backers = ordered.filter(m => ECHO_KEYS.some(k => MON[m.id].fx[k]) || (TRIGGERS[m.id] && TRIGGERS[m.id].from === 'front'));
+  const fronters = ordered.filter(m => !backers.includes(m) && AURAS[m.id] && AURAS[m.id].who === 'behind');
+  const others = ordered.filter(m => !backers.includes(m) && !fronters.includes(m));
+  const slots = Array(6).fill(null);
+  const front = [...fronters, ...others].slice(0, 3);
+  front.forEach((m, i) => slots[i] = m);
+  const left = [...fronters, ...others].slice(3);
+  const strongest = front.map((m, i) => [m, i]).sort((x, y) => instValue(y[0]) - instValue(x[0])).map(x => x[1]);
+  for (const bk of backers) { const i = strongest.find(j => !slots[j + 3]); if (i !== undefined) slots[i + 3] = bk; else left.unshift(bk); }
+  for (const m of left) { const j = slots.indexOf(null); if (j >= 0) slots[j] = m; }
   run.team = Array(RULES.teamSlots).fill(null);
-  ordered.forEach((m, i) => run.team[i] = m);
+  slots.forEach((m, i) => run.team[i] = m);
   run.bench = Array(R.benchSize(run)).fill(null);
   rest.slice(0, run.bench.length).forEach((m, i) => run.bench[i] = m);
 }

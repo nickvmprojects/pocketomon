@@ -2,7 +2,7 @@
 // Clock ticks every 0.1s. Each tick: charge timers, mons that reach their cooldown cast in
 // slot order (slot 1 player, slot 1 opponent, slot 2 player, ...), then the battle ends if a
 // team is at 0 HP. Statuses tick once per second. Ties go to side A (the player).
-import { MON, RULES, LV, FX, ECHO_KEYS, fxValue, trinketBonus } from './data.js?v=0.2';
+import { MON, RULES, LV, FX, ECHO_KEYS, fxValue, trinketBonus, TRIGGERS, AURAS, inZone } from './data.js?v=0.3';
 
 const DT = 0.1;
 const TPS = 10; // ticks per second
@@ -19,7 +19,7 @@ function makeUnit(inst, side, pos, team) {
   if (pos === 5) k += (b.slot6 || 0) / 100;
   if (pos === 0 && team.avatar === 'coach') k += 0.3;
   atk *= k; pow *= k;
-  return { side, pos, def, lvl: inst.lvl, atk, pow, cd: def.cd, charge: 0, ramp: 0, casts: 0 };
+  return { side, pos, def, lvl: inst.lvl, atk, pow, cd: def.cd, charge: 0, ramp: 0, casts: 0, spd: 1, trig: TRIGGERS[def.id] };
 }
 
 function makeSide(team, side) {
@@ -27,11 +27,21 @@ function makeSide(team, side) {
     side, maxHp: team.maxHp, hp: team.maxHp, shield: 0,
     burn: 0, poison: 0, chill: 0, haste: 0, expose: 0, weaken: 0, growth: 0,
     doom: 0, doomT: 0, scrap: 0, rebirth: 0, rebirthUsed: false,
-    trinkets: team.trinkets || [], avatar: team.avatar, bonus: trinketBonus(team.trinkets),
+    trinkets: team.trinkets || [], avatar: team.avatar, bonus: trinketBonus(team.trinkets), par: team.par || null,
     dmgDealt: 0, healed: 0,
   };
   s.units = [];
   for (let i = 0; i < 6; i++) s.units.push(makeUnit(team.mons[i], side, i, s));
+  // ongoing positional auras (computed from base stats so auras don't feed each other)
+  const mods = s.units.map(() => ({ atk: 0, pow: 0, spd: 0 }));
+  for (const u of s.units) {
+    const a = u && AURAS[u.def.id]; if (!a) continue;
+    const k = LV.pct[u.lvl];
+    for (const o of s.units) if (o && inZone(a.who, u.pos, o.pos)) {
+      mods[o.pos].atk += (a.atk || 0) * k; mods[o.pos].pow += (a.pow || 0) * k; mods[o.pos].spd += (a.speed || 0) * k;
+    }
+  }
+  for (const o of s.units) if (o) { const m = mods[o.pos]; o.atk *= 1 + m.atk / 100; o.pow *= 1 + m.pow / 100; o.spd = 1 + m.spd / 100; o.aura = m; }
   s.prism = 1 + (s.bonus.fxp || 0) / 100;
   s.whet = 1 + (s.bonus.dmg || 0) / 100;
   s.wind = s.bonus.wind || 0; s.windUsed = false;
@@ -56,21 +66,55 @@ export function simulate(teamA, teamB, opts = {}) {
     if (!pierce && side.shield > 0) { const ab = Math.min(side.shield, a); side.shield -= ab; a -= ab; if (ab > 0) ev({ k: 'absorb', s: side.side, v: ab }); }
     side.hp -= a;
     ev({ k: 'dmg', s: side.side, v: amt, kind });
+    if (!side.low50 && side.hp > 0 && side.hp < side.maxHp * 0.5) { side.low50 = true; emit(side, 'lowHp', {}); emit(S[1 - side.side], 'foeLow', {}); }
     return amt;
   };
+  // ---- triggers: each mon fires at most once per chain, never from a copy of itself
+  let chain = null;
+  function emit(side, on, data) {
+    const top = !chain; if (top) chain = new Set();
+    for (const u of side.units) {
+      if (!u || !u.trig || u.trig.on !== on || chain.has(u)) continue;
+      const t = u.trig;
+      if (on === 'allyCast') {
+        const src = data.unit;
+        if (src === u || src.def.id === u.def.id) continue;
+        if (t.type && src.def.type !== t.type) continue;
+        if (t.from && !inZone(t.from, u.pos, src.pos)) continue; // e.g. from 'front': the source is in front of me
+      }
+      chain.add(u);
+      fireTrigger(u, data);
+    }
+    if (top) chain = null;
+  }
+  function fireTrigger(u, data) {
+    const own = S[u.side], foe = S[1 - u.side], d = u.trig.do;
+    ev({ k: 'trig', s: u.side, pos: u.pos });
+    if (d.cast) { u.charge = 0; cast(u, 1, null); return; }
+    if (d.fx) for (const [k, v] of Object.entries(d.fx)) applyFx(u, own, foe, k, v, 1, 0);
+    if (d.pct) {
+      const x = (data.v || 0) * d.v / 100 * u.pow * own.prism;
+      if (d.pct === 'dmg') own.dmgDealt += damage(foe, x, 'hit', false);
+      if (d.pct === 'heal') heal(own, x, true);
+      if (d.pct === 'shield') addShield(own, x);
+    }
+  }
   // healing past max HP overflows into shield at half value
   const heal = (side, amt, noOverflow) => {
     if (amt <= 0) return 0;
     const h = Math.min(amt, side.maxHp - side.hp);
     side.hp += h; side.healed += h;
     ev({ k: 'heal', s: side.side, v: amt });
-    if (!noOverflow && amt > h) side.shield = Math.min(side.maxHp * RULES.shieldCap, side.shield + (amt - h) * 0.5);
+    if (!noOverflow && amt > h) { const g = Math.min(side.maxHp * RULES.shieldCap, side.shield + (amt - h) * 0.5) - side.shield; side.shield += g; if (g > 0) emit(side, 'shieldGain', { v: g }); }
+    emit(side, 'healed', { v: amt });
     return h;
   };
   const addShield = (side, amt) => {
     const cap = side.maxHp * RULES.shieldCap;
-    side.shield = Math.min(cap, side.shield + amt);
+    const g = Math.min(cap, side.shield + amt) - side.shield;
+    side.shield += g;
     ev({ k: 'shield', s: side.side, v: amt });
+    if (g > 0) emit(side, 'shieldGain', { v: g });
   };
   const add = (side, key, v) => { side[key] = Math.min(CAPS[key] ?? 1e9, side[key] + v); };
 
@@ -128,13 +172,13 @@ export function simulate(teamA, teamB, opts = {}) {
     }
   }
 
-  function findEchoTarget(own, from, dir) {
-    for (let p = from + dir; p >= 0 && p < 6; p += dir) {
-      const o = own.units[p];
-      if (o && !ECHO_KEYS.some(k => o.def.fx[k])) return o;
-    }
+  // echo target on the grid: the ally in front / behind that isn't an echo mon
+  const isEcho = (o) => ECHO_KEYS.some(k => o.def.fx[k]);
+  function findEchoTarget(own, from, who) {
+    for (const o of own.units) if (o && !isEcho(o) && inZone(who, from, o.pos)) return o;
     return null;
   }
+
 
   function cast(u, scale, echoed, t) {
     const own = S[u.side], foe = S[1 - u.side];
@@ -155,15 +199,20 @@ export function simulate(teamA, teamB, opts = {}) {
     // ---- echoes (never chain)
     if (!echoed) {
       const targets = [];
-      if (fx.echo) targets.push([findEchoTarget(own, u.pos, -1) || findEchoTarget(own, u.pos, 1), 'echo']);
-      if (fx.echoBack) targets.push([findEchoTarget(own, u.pos, 1) || findEchoTarget(own, u.pos, -1), 'echoBack']);
-      if (fx.echoBoth) { targets.push([findEchoTarget(own, u.pos, -1), 'echoBoth']); targets.push([findEchoTarget(own, u.pos, 1), 'echoBoth']); }
+      if (fx.echo) targets.push([findEchoTarget(own, u.pos, 'front') || findEchoTarget(own, u.pos, 'adjacent'), 'echo']);
+      if (fx.echoBack) targets.push([findEchoTarget(own, u.pos, 'behind') || findEchoTarget(own, u.pos, 'adjacent'), 'echoBack']);
+      if (fx.echoBoth) {
+        const f = findEchoTarget(own, u.pos, 'front'), bk = findEchoTarget(own, u.pos, 'behind');
+        if (f) targets.push([f, 'echoBoth']); if (bk) targets.push([bk, 'echoBoth']);
+        if (!f && !bk) targets.push([findEchoTarget(own, u.pos, 'adjacent'), 'echoBoth']);
+      }
       for (const [tgt, key] of targets) {
         if (!tgt) continue;
         const pct = Math.min(125, val(u, key, fx[key], { prism: 1 }));
         cast(tgt, scale * pct / 100, u, t);
       }
     }
+    emit(own, 'allyCast', { unit: u });
   }
 
   // ---- battle start: passives in slot order
@@ -188,13 +237,13 @@ export function simulate(teamA, teamB, opts = {}) {
     return Math.max(0.3, h * (1 - side.chill / 100));
   };
 
-  let tick = 0, winner = null, endT = 0;
+  let tick = 0, winner = null, endT = 0, suddenOn = false;
   const maxTicks = RULES.hardCapSeconds * TPS;
   while (tick < maxTicks) {
     tick++;
     const t = tick / TPS;
     // 1) charge
-    for (const side of S) { const sp = speed(side, t) * DT; for (const u of side.units) if (u) u.charge += sp; }
+    for (const side of S) { const sp = speed(side, t) * DT; for (const u of side.units) if (u) u.charge += sp * u.spd; }
     // 2) casts in slot order, player first on the same slot
     for (let p = 0; p < 6; p++) for (const side of S) {
       const u = side.units[p];
@@ -202,13 +251,20 @@ export function simulate(teamA, teamB, opts = {}) {
     }
     // 3) per-second statuses
     if (tick % TPS === 0) {
+      // rating dummy: a "par attacker" deals fixed damage per second (hits feel chill/weaken/expose, the rest pierces)
+      for (const side of S) if (side.par) {
+        const foe = S[1 - side.side], slow = 1 - side.chill / 100;
+        damage(foe, side.par.hit * slow * (1 - side.weaken / 100) * (1 + foe.expose / 100), 'hit', false);
+        damage(foe, side.par.pierce * slow, 'poison', true);
+      }
+      if (t > RULES.battleSeconds && !suddenOn) { suddenOn = true; for (const side of S) emit(side, 'sudden', {}); }
       for (const side of S) {
         if (side.burn > 0.05) { damage(side, side.burn, 'burn', false); side.burn *= 0.7; if (side.burn < 0.5) side.burn = 0; }
         if (side.poison > 0) damage(side, side.poison * 0.33, 'poison', true);
-        if (side.doom > 0) { side.doomT -= 1; if (side.doomT <= 0) { damage(side, side.doom, 'doom', true); ev({ k: 'boom', s: side.side, v: side.doom }); side.doom = 0; side.doomT = 0; } }
+        if (side.doom > 0) { side.doomT -= 1; if (side.doomT <= 0) { const boom = side.doom; damage(side, boom, 'doom', true); ev({ k: 'boom', s: side.side, v: boom }); emit(S[1 - side.side], 'doomBoom', { v: boom }); side.doom = 0; side.doomT = 0; } }
         for (const u of side.units) if (u && u.def.pas.regen) heal(side, val(u, 'regen', u.def.pas.regen, side), true);
         for (const k in DECAY) side[k] = Math.max(0, side[k] - DECAY[k]);
-        if (t > RULES.battleSeconds) {
+        if (t > RULES.battleSeconds && !side.par) {
           const n = t - RULES.battleSeconds;
           let drain = side.maxHp * RULES.suddenDeathRamp * n;
           drain *= Math.max(0, 1 - (side.bonus.sd || 0) / 100);
@@ -245,4 +301,16 @@ function frame(t, S, events) {
       ch: x.units.map(u => u ? Math.max(0, Math.min(1, u.charge / u.cd)) : 0),
     })),
   };
+}
+
+// ------------------------------------------------------------------ hidden team rating (ranked matchmaking)
+// kill: seconds to empty a passive dummy with the team's own HP; survive: seconds lasted against a par attacker
+// dealing hp/24 per second (75% hits, 25% piercing). rating = survive / kill. Only the ordering matters.
+export function rateTeam(team) {
+  const hp = team.maxHp;
+  const dummy = { mons: [null, null, null, null, null, null], maxHp: hp, trinkets: [], avatar: null };
+  const kill = simulate(team, dummy).t;
+  const par = { mons: [null, null, null, null, null, null], maxHp: 1e9, trinkets: [], avatar: null, par: { hit: hp / 24 * 0.75, pierce: hp / 24 * 0.25 } };
+  const survive = simulate(team, par).t;
+  return { kill, survive, rating: Math.round(survive / kill * 1000) / 1000 };
 }

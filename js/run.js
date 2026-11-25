@@ -1,10 +1,11 @@
 // Pocketomon run logic: days, events, shop, merging, snapshots. Pure state functions
 // (the UI and the bot simulator both use them). Randomness comes from run.rs (saved).
 import {
-  RULES, MON, MONS, TYPE_KEYS, AVATARS, AVATAR, TRINKETS, TRINKET, isBattleTrinket, trinketBonus,
-  teamHp, income, price, sellPerCopy, tierWeights, maxTier, TIER_POWER, LV_POWER,
-} from './data.js?v=0.2';
-import { makeRng, hash } from './rng.js?v=0.2';
+  RULES, MON, MONS, TYPE_KEYS, AVATARS, AVATAR, TRINKETS, TRINKET, isBattleTrinket, trinketBonus, TRIGGERS,
+  teamHp, income, price, sellPerCopy, tierWeights, maxTier, TIER_POWER, LV_POWER, fxValue,
+} from './data.js?v=0.3';
+import { makeRng, hash } from './rng.js?v=0.3';
+import { rateTeam } from './battle.js?v=0.3';
 
 export function rngOf(run) { const r = makeRng(run.rs); return r; }
 function save(run, r) { run.rs = r.state(); }
@@ -165,7 +166,7 @@ export function chooseEvent(run, idx, target) {
   switch (c.kind) {
     case 'avatar': {
       run.avatar = c.id;
-      if (c.id === 'mystic') { const t = r.pick(trinketPool(run, 2)); run.trinkets.push(t.id); msg = `Oona found a ${t.name}!`; while (run.bench.length < benchSize(run)) run.bench.push(null); }
+      if (c.id === 'mystic') { const t = r.pick(trinketPool(run, 2)); run.trinkets.push(t.id); fireAll(run, 'trinket'); msg = `Oona found a ${t.name}!`; while (run.bench.length < benchSize(run)) run.bench.push(null); }
       if (c.id === 'junkyard' && !run.types.includes('junk')) run.types[r.int(run.types.length)] = 'junk';
       if (c.id === 'tamer') for (let k = 0; k < 2; k++) addMon(run, rollInst(run, r.pick(MONS.filter(x => x.tier === 1 && run.types.includes(x.type))).id, r));
       if (c.id === 'scholar' || c.id === 'junkyard') rollShop(run, r, true);
@@ -187,7 +188,7 @@ export function chooseEvent(run, idx, target) {
       }
       break;
     }
-    case 'trinket': run.trinkets.push(c.id); while (run.bench.length < benchSize(run)) run.bench.push(null); msg = `Got ${TRINKET[c.id].name}`; break;
+    case 'trinket': run.trinkets.push(c.id); fireAll(run, 'trinket'); while (run.bench.length < benchSize(run)) run.bench.push(null); msg = `Got ${TRINKET[c.id].name}`; break;
     case 'hp': run.hpBonus = +(run.hpBonus + 0.1).toFixed(2); msg = 'Team HP +10%'; break;
     case 'rerolls': run.rerollBank += 4; msg = '+4 free rerolls'; break;
     case 'sale': run.sale = true; msg = 'Sale today!'; break;
@@ -230,6 +231,7 @@ export function addMon(run, inst, dest) {
     let merged = mergeInsts(run, [parts[0].m, parts[1].m, inst]);
     slotsOf(run, into.zone)[into.i] = merged;
     queueTrinket(run, MON[inst.id].tier);
+    fireShopTrigger(run, merged, 'levelUp', into);
     const lvl3 = checkL3(run, merged, into);
     return { ok: true, merged: lvl3 ? 3 : 2, at: lvl3 || into };
   }
@@ -250,10 +252,49 @@ function checkL3(run, m, at) {
   const into = here.zone === 'team' ? here : (other.zone === 'team' ? other : here);
   slotsOf(run, here.zone)[here.i] = null;
   slotsOf(run, other.zone)[other.i] = null;
-  slotsOf(run, into.zone)[into.i] = mergeInsts(run, [m, other.m]);
+  const l3 = mergeInsts(run, [m, other.m]);
+  slotsOf(run, into.zone)[into.i] = l3;
   queueTrinket(run, MON[m.id].tier);
+  fireShopTrigger(run, l3, 'levelUp', into);
   return into;
 }
+
+// ---------------- shop triggers (buy, sell, levelUp, trinket, allySold, reroll, win, loss)
+const rnd3 = (x) => Math.round(x * 1000) / 1000;
+function growMon(m, o, lvl) {
+  if (!m) return;
+  if (o.atk) m.atk = rnd3(m.atk + o.atk * lvl);
+  if (o.pow) m.pow = rnd3(m.pow + o.pow * lvl);
+}
+// fire the trigger of mon m (at location loc, may be null if sold) for event on; returns a short message
+export function fireShopTrigger(run, m, on, loc) {
+  const t = TRIGGERS[m.id];
+  if (!t || t.on !== on) return '';
+  const d = t.do, lvl = m.lvl, name = MON[m.id].name;
+  if (d.grow) { growMon(m, d.grow, lvl); return `${name} grew!`; }
+  if (d.gold) { run.gold += d.gold * lvl; return `${name}: +${d.gold * lvl} gold`; }
+  if (d.growAll) { for (const o of owned(run)) if (MON[o.m.id].type === d.growAll.type) growMon(o.m, d.growAll, lvl); return `${name} boosted your ${d.growAll.type} mons!`; }
+  if (d.growRand) {
+    const pool = owned(run).filter(o => MON[o.m.id].type === d.growRand.type && o.m !== m);
+    if (!pool.length) return '';
+    const r = rngOf(run); const o = r.pick(pool); save(run, r);
+    growMon(o.m, d.growRand, lvl); return `${name} boosted ${MON[o.m.id].name}!`;
+  }
+  if (d.growFront) {
+    let target = null;
+    if (loc && loc.zone === 'team' && loc.i > 0) target = run.team.slice(0, loc.i).reverse().find(Boolean);
+    if (!target) target = run.team.slice().reverse().find(x => x && x !== m);
+    if (!target) return '';
+    growMon(target, d.growFront, lvl); return `${name} boosted ${MON[target.id].name}!`;
+  }
+  return '';
+}
+export function fireAll(run, on, list) {
+  const msgs = [];
+  for (const o of (list || owned(run))) { const x = fireShopTrigger(run, o.m, on, o); if (x) msgs.push(x); }
+  return msgs.join(' ');
+}
+const locOf = (run, m) => owned(run).find(o => o.m === m) || null;
 
 // ---------------- merge rewards: pick 1 of 3 trinkets of the merged mon's tier ----------------
 export function trinketPool(run, tier) {
@@ -284,6 +325,7 @@ export function chooseTrinket(run, id) {
   if (!q || !q.options.includes(id)) return { ok: false, msg: 'Not an option' };
   run.trinkets.push(id);
   run.trinketQueue.shift();
+  fireAll(run, 'trinket');
   while (run.bench.length < benchSize(run)) run.bench.push(null);
   return { ok: true, msg: `Got ${TRINKET[id].name}!` };
 }
@@ -299,7 +341,9 @@ export function buy(run, shopIdx, dest) {
   if (!res.ok) return res;
   run.gold -= cost;
   run.shop[shopIdx] = { mon: null, locked: false };
-  return { ok: true, merged: res.merged, at: res.at, msg: res.merged ? `${def.name} reached level ${res.merged}!` : `Bought ${def.name}` };
+  const at = res.at && slotsOf(run, res.at.zone)[res.at.i];
+  const tmsg = at ? fireShopTrigger(run, at, 'buy', res.at) : '';
+  return { ok: true, merged: res.merged, at: res.at, msg: (res.merged ? `${def.name} reached level ${res.merged}!` : `Bought ${def.name}`) + (tmsg ? ' ' + tmsg : '') };
 }
 
 export function sellValue(run, m) { return (sellPerCopy(MON[m.id]) + (run.avatar === 'junkyard' ? 3 : 0)) * (m.copies || 1); }
@@ -310,7 +354,9 @@ export function sell(run, zone, i) {
   if (!m) return { ok: false, msg: 'Empty' };
   const v = sellValue(run, m);
   run.gold += v; slots[i] = null;
-  return { ok: true, msg: `Sold ${MON[m.id].name} for ${v}` };
+  const t1 = fireShopTrigger(run, m, 'sell', null);
+  const t2 = fireAll(run, 'allySold');
+  return { ok: true, msg: `Sold ${MON[m.id].name} for ${v}` + [t1, t2].filter(Boolean).map(x => ' ' + x).join('') };
 }
 
 export function move(run, from, to) {
@@ -325,6 +371,7 @@ export function reroll(run) {
   if (run.gold < c) return { ok: false, msg: `Need ${c} gold` };
   if (run.freeRerolls > 0) run.freeRerolls--; else if (run.rerollBank > 0) run.rerollBank--; else run.gold -= c;
   const r = rngOf(run); rollShop(run, r, true); save(run, r);
+  fireAll(run, 'reroll');
   return { ok: true };
 }
 export function toggleLock(run, i) { if (run.shop[i] && run.shop[i].mon) run.shop[i].locked = !run.shop[i].locked; }
@@ -335,22 +382,33 @@ export function hpMult(hpBonus, avatar, trinkets) {
 }
 export const maxHpFor = (day, hpBonus, avatar, trinkets) => Math.round(teamHp(day) * hpMult(hpBonus, avatar, trinkets));
 
-export function teamPower(team, hpBonus, avatar, trinkets) {
-  let p = 0;
-  for (const m of team) if (m) p += TIER_POWER[MON[m.id].tier] * LV_POWER[m.lvl] * (m.atk + m.pow) / 2;
-  // battle trinkets add 1.5% power per trinket tier (HP trinkets already count through hpMult)
-  const bt = trinkets.filter(t => isBattleTrinket(t)).reduce((a, t) => a + TRINKET[t].tier, 0);
-  return Math.round(p * hpMult(hpBonus, avatar, trinkets) * (1 + 0.015 * bt) * (avatar === 'coach' && team[0] ? 1.05 : 1));
+// Shown "Power": the plain sum of a team's stat numbers (hit + every effect number, with level, rolls and buffs;
+// cooldowns ignored). Fun to watch grow, deliberately NOT the real strength (that is the hidden rating).
+export function monPower(m) {
+  const def = MON[m.id];
+  let p = fxValue('dmg', def.dmg, def, m.lvl, m.atk);
+  for (const [k, v] of Object.entries(def.fx)) p += fxValue(k, v, def, m.lvl, m.pow);
+  if (def.pas.start) for (const [k, v] of Object.entries(def.pas.start)) p += fxValue(k, v, def, m.lvl, m.pow);
+  if (def.pas.regen) p += fxValue('regen', def.pas.regen, def, m.lvl, m.pow);
+  return p;
 }
-export const runPower = (run) => teamPower(run.team, run.hpBonus, run.avatar, run.trinkets);
+export function teamPower(team) {
+  let p = 0;
+  for (const m of team) if (m) p += monPower(m);
+  return Math.round(p);
+}
+export const runPower = (run) => teamPower(run.team);
+export const runRating = (run) => rateTeam(battleTeamFromSnap({ day: run.day, hpBonus: run.hpBonus, avatar: run.avatar, trinkets: run.trinkets.filter(t => isBattleTrinket(t)), team: run.team })).rating;
 
 export function snapshot(run, name) {
-  return {
+  const s = {
     name, day: run.day, wins: run.wins, losses: run.losses, avatar: run.avatar,
     trinkets: run.trinkets.filter(t => isBattleTrinket(t)), hpBonus: run.hpBonus,
     team: run.team.map(m => m ? { id: m.id, lvl: m.lvl, atk: m.atk, pow: m.pow } : null),
     power: runPower(run),
   };
+  s.rating = rateTeam(battleTeamFromSnap(s)).rating; // hidden, used by ranked matchmaking
+  return s;
 }
 export function battleTeamFromSnap(s) {
   return { mons: s.team, maxHp: maxHpFor(s.day, s.hpBonus, s.avatar, s.trinkets), trinkets: s.trinkets, avatar: s.avatar };
@@ -366,6 +424,7 @@ export function salvageGold(run) {
 export function finishBattle(run, won, opp) {
   const sum = { won, day: run.day, gold: 0 };
   if (won) run.wins++; else { run.losses++; run.lives--; }
+  sum.grew = fireAll(run, won ? 'win' : 'loss', run.team.map((m, i) => m && { zone: 'team', i, m }).filter(Boolean));
   sum.salvage = salvageGold(run);
   sum.egg = won ? (bonusOf(run).winGold || 0) : 0;
   run.gold += sum.salvage + sum.egg;
@@ -385,8 +444,9 @@ export function pickOpponent(run, library, rankIndex = 0) {
   const pool = library[d] || library[days[0]];
   let pick;
   if (run.mode === 'ranked') {
-    const target = runPower(run) * (1 + 0.03 * rankIndex);
-    const sorted = pool.slice().sort((a, b) => Math.abs(a.power - target) - Math.abs(b.power - target));
+    // hidden rating (seconds survived / seconds to kill vs that day's dummies), a bit tougher per rank
+    const target = runRating(run) * (1 + 0.03 * rankIndex);
+    const sorted = pool.slice().sort((a, b) => Math.abs(a.rating - target) - Math.abs(b.rating - target));
     pick = r.pick(sorted.slice(0, 5));
   } else pick = r.pick(pool);
   save(run, r);

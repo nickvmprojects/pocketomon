@@ -1,5 +1,5 @@
 // Pocketomon — game data. All numbers are first-pass and tuned by tools/gen.mjs.
-export const VERSION = '0.2';
+export const VERSION = '0.3';
 
 export const RULES = {
   battleSeconds: 30,       // regular time
@@ -71,7 +71,7 @@ export const TYPES = {
   psychic:  { name: 'Psychic',  icon: '🔮', color: '#ff6fc8', dark: '#93266b', mech: 'Mind',    blurb: 'Expose makes the enemy take more damage (all kinds); Weaken makes them deal less.' },
   ghost:    { name: 'Ghost',    icon: '👻', color: '#8a8cff', dark: '#33358f', mech: 'Doom',    blurb: 'Doom piles up and detonates 5s after it starts, piercing shields.' },
   junk:     { name: 'Junk',     icon: '🗑️', color: '#9aa37a', dark: '#4b5233', mech: 'Scrap',   blurb: 'Scrap piles make every Junk mon hit harder. Some salvage gold after battle.' },
-  sound:    { name: 'Sound',    icon: '🎵', color: '#ffa94d', dark: '#8f4f10', mech: 'Echo',    blurb: 'Echo repeats the move of the ally in front (or behind) at partial power.' },
+  sound:    { name: 'Sound',    icon: '🎵', color: '#ffa94d', dark: '#8f4f10', mech: 'Echo',    blurb: 'Echo repeats the move of the ally in front (or behind) at partial power. If there is none, an adjacent ally.' },
 };
 export const TYPE_KEYS = Object.keys(TYPES);
 
@@ -215,8 +215,8 @@ export const MONS = [
 export const MON = Object.fromEntries(MONS.map(x => [x.id, x]));
 // Balance knobs written by tools/balance.mjs from simulations:
 // COST_ADJ = price change per mon (-5..+5, stronger archetypes cost more); TUNE = multiplier on all of a mon's numbers.
-export const COST_ADJ = {"emberpup":2,"cindermite":3,"kilnkit":3,"flarebat":1,"pyrrhino":-4,"wickwisp":3,"magmaw":-1,"sunmoth":-1,"infernodon":-3,"phoenyx":-1,"puddlefin":3,"bubblot":3,"ripplet":2,"mistle":-3,"tidalon":-5,"krakenling":-3,"rainbeau":-5,"leviathorn":1,"aquarion":-3,"sproutle":-3,"thornbit":2,"budgeon":-2,"oakhorn":1,"lashvine":-3,"petalisk":2,"barkodile":2,"verdragon":-1,"zapling":-5,"voltmouse":-1,"sparkoon":-1,"dynamole":1,"coilbee":2,"stormlion":1,"teslug":3,"raijumbo":2,"ampharaoh":5,"frostkit":-5,"snowpeck":-4,"glaciub":2,"flurrfox":-1,"tuskfrost":5,"shiverling":-1,"blizzowl":1,"crystalynx":2,"glacierex":2,"borealis":5,"pebblet":3,"gravelump":-1,"cragcub":-1,"geodot":2,"quarrion":-2,"spikeshell":-2,"monolith":-4,"obsidrake":-3,"titanox":-1,"colossite":-4,"sludgit":1,"stinkbug":3,"toxitoad":-2,"plagueroo":-2,"belladonix":-1,"hydraxis":-3,"morbulb":-5,"mindle":1,"dozzle":-2,"psyfox":4,"trancey":-1,"cerebrox":3,"mesmeray":3,"oraclam":3,"psyclops":2,"cosmind":4,"boolet":3,"spookit":-1,"ghoulpup":-2,"wraithorn":2,"lanternik":-2,"soulsipper":-4,"phantomaw":-5,"reapurr":-5,"canrat":-5,"rustacean":-3,"dumpsterix":-2,"magnetick":-4,"crushbox":-4,"gearwolf":-3,"landfillion":-5,"chirpip":1,"drumbo":-3,"hummingbard":2,"bassloon":-4,"amplifox":3,"kazooka":-3,"banjoar":3,"maestrich":2,"encorca":5};
-export const TUNE = {"cindermite":0.983,"kilnkit":1.046,"wickwisp":0.93,"infernodon":0.897,"puddlefin":0.999,"bubblot":1.041,"mistle":0.961,"tidalon":0.968,"krakenling":1.115,"rainbeau":0.967,"aquarion":0.962,"sproutle":0.909,"budgeon":0.919,"oakhorn":0.964,"lashvine":1.032,"petalisk":0.932,"barkodile":0.99,"zapling":0.909,"coilbee":1.03,"teslug":0.916,"raijumbo":0.948,"ampharaoh":0.764,"frostkit":0.899,"snowpeck":0.943,"glaciub":0.935,"tuskfrost":0.913,"blizzowl":0.844,"crystalynx":0.901,"borealis":0.853,"pebblet":0.912,"geodot":0.986,"monolith":0.968,"obsidrake":1.072,"colossite":1.057,"stinkbug":0.988,"plagueroo":0.983,"hydraxis":1.063,"morbulb":0.96,"mindle":1.033,"psyfox":1.051,"cerebrox":0.892,"mesmeray":0.943,"oraclam":0.952,"psyclops":1.089,"cosmind":0.882,"boolet":1.107,"ghoulpup":1.014,"wraithorn":1.053,"soulsipper":1.085,"phantomaw":0.956,"reapurr":1.043,"canrat":0.989,"rustacean":0.925,"dumpsterix":1.157,"magnetick":1.048,"crushbox":0.896,"gearwolf":0.962,"landfillion":1.091,"drumbo":0.993,"bassloon":1.048,"amplifox":0.918,"kazooka":1.018,"banjoar":0.859,"maestrich":0.965,"encorca":1.237,"emberpup":0.946,"sunmoth":1.029,"phoenyx":0.914,"ripplet":1.038,"corallis":1.048,"leviathorn":1.115,"elderoot":0.979,"verdragon":0.869,"voltmouse":0.937,"sparkoon":0.98,"dynamole":0.989,"shiverling":1.077,"glacierex":0.82,"gravelump":1.046,"cragcub":1.012,"spikeshell":1.017,"titanox":1.139,"fungloom":1.002,"miasmite":0.863,"belladonix":1.028,"dozzle":1.008,"trancey":1.063,"sphinxie":1.192,"wisplet":1.045,"spookit":0.98,"binbot":1.069,"recyclops":1.275,"hummingbard":1.005,"symphonix":0.896,"leaflynx":0.89,"flurrfox":1.069,"sludgit":0.967,"toxitoad":0.904,"lanternik":0.934,"trashling":0.978,"magmaw":1.09,"thunderam":0.966,"stormlion":0.869,"quarrion":0.996,"banshriek":1.02,"flarebat":0.966,"thornbit":1.036,"chirpip":0.986,"pyrrhino":0.977};
+export const COST_ADJ = {"emberpup":-2,"kilnkit":-1,"flarebat":5,"pyrrhino":-1,"wickwisp":3,"magmaw":1,"infernodon":-1,"puddlefin":1,"ripplet":3,"tidalon":-3,"krakenling":-3,"rainbeau":-2,"leviathorn":-1,"aquarion":-2,"sproutle":-1,"thornbit":-1,"budgeon":-1,"oakhorn":-1,"lashvine":-4,"petalisk":4,"barkodile":-1,"verdragon":3,"zapling":1,"voltmouse":-2,"sparkoon":-1,"dynamole":-3,"coilbee":1,"stormlion":-3,"teslug":2,"ampharaoh":2,"frostkit":-1,"snowpeck":-1,"glaciub":1,"tuskfrost":1,"shiverling":1,"blizzowl":3,"crystalynx":3,"borealis":3,"pebblet":-1,"cragcub":1,"geodot":5,"quarrion":-3,"spikeshell":5,"monolith":-1,"obsidrake":-1,"titanox":-2,"colossite":1,"sludgit":-2,"stinkbug":3,"toxitoad":-3,"plagueroo":-3,"belladonix":2,"hydraxis":-2,"morbulb":-2,"dozzle":-1,"psyfox":3,"trancey":-2,"cerebrox":1,"mesmeray":2,"oraclam":1,"psyclops":3,"cosmind":4,"spookit":-1,"ghoulpup":2,"wraithorn":-1,"lanternik":1,"soulsipper":-3,"phantomaw":2,"reapurr":-4,"canrat":-1,"rustacean":-3,"dumpsterix":-3,"gearwolf":1,"landfillion":-3,"chirpip":1,"drumbo":-1,"hummingbard":1,"bassloon":-2,"amplifox":-1,"kazooka":1,"maestrich":1,"corallis":3,"thunderam":-4,"fungloom":-3,"venomba":-2,"miasmite":2,"wisplet":5,"binbot":-3,"symphonix":-2};
+export const TUNE = {"cindermite":0.85,"kilnkit":0.92,"wickwisp":0.672,"infernodon":0.899,"puddlefin":0.961,"bubblot":0.931,"mistle":0.935,"tidalon":1.051,"krakenling":1.289,"rainbeau":1.021,"aquarion":1.006,"sproutle":0.941,"budgeon":0.994,"oakhorn":0.871,"lashvine":1.073,"petalisk":0.872,"barkodile":0.92,"zapling":1.077,"coilbee":0.916,"teslug":0.893,"raijumbo":0.849,"ampharaoh":0.656,"frostkit":1.056,"snowpeck":1.01,"glaciub":0.88,"tuskfrost":0.906,"blizzowl":0.897,"crystalynx":0.923,"borealis":0.825,"pebblet":0.762,"geodot":0.831,"monolith":1.008,"obsidrake":1.178,"colossite":1.156,"stinkbug":0.833,"plagueroo":0.974,"hydraxis":1.092,"morbulb":1.028,"mindle":1.062,"psyfox":0.891,"cerebrox":0.911,"mesmeray":0.972,"oraclam":0.948,"psyclops":1.225,"cosmind":0.821,"boolet":0.996,"ghoulpup":1.127,"wraithorn":1.075,"soulsipper":1.117,"phantomaw":0.927,"reapurr":1.023,"canrat":1.36,"rustacean":0.931,"dumpsterix":1.18,"magnetick":1.276,"crushbox":1.07,"gearwolf":0.912,"landfillion":1.137,"drumbo":1.094,"bassloon":1.212,"amplifox":0.918,"kazooka":1.02,"banjoar":0.859,"maestrich":0.832,"encorca":1.129,"emberpup":0.767,"sunmoth":1.0,"phoenyx":0.891,"ripplet":0.977,"corallis":0.966,"leviathorn":1.122,"elderoot":0.904,"verdragon":0.849,"voltmouse":0.923,"sparkoon":1.087,"dynamole":0.943,"shiverling":1.077,"glacierex":0.841,"gravelump":1.067,"cragcub":0.937,"spikeshell":0.968,"titanox":1.103,"fungloom":1.007,"miasmite":0.817,"belladonix":1.119,"dozzle":1.098,"trancey":1.087,"sphinxie":0.98,"wisplet":0.831,"spookit":1.062,"binbot":1.082,"recyclops":1.392,"hummingbard":1.005,"symphonix":1.126,"leaflynx":0.918,"flurrfox":1.199,"sludgit":0.904,"toxitoad":0.966,"lanternik":0.938,"trashling":0.978,"magmaw":1.15,"thunderam":0.97,"stormlion":0.76,"quarrion":1.04,"banshriek":1.051,"flarebat":0.888,"thornbit":0.906,"chirpip":0.987,"pyrrhino":1.031,"venomba":1.098};
 
 // Effect metadata: icon, label, and how levels scale it.
 export const FX = {
@@ -245,15 +245,134 @@ export const FX = {
   execute:   { icon: '🗡️', label: 'Execute <30%', scale: 'pct', unit: '%' },
   scrap:     { icon: '🔩', label: 'Scrap', scale: 'fx' },
   scrapper:  { icon: '🔧', label: 'Extra scrap dmg', scale: 'pct', unit: '%' },
-  echo:      { icon: '🎵', label: 'Echo front', scale: 'pct', unit: '%' },
-  echoBack:  { icon: '🎵', label: 'Echo behind', scale: 'pct', unit: '%' },
-  echoBoth:  { icon: '🎶', label: 'Echo both', scale: 'pct', unit: '%' },
+  echo:      { icon: '🎵', label: 'Echo ally in front', scale: 'pct', unit: '%' },
+  echoBack:  { icon: '🎵', label: 'Echo ally behind', scale: 'pct', unit: '%' },
+  echoBoth:  { icon: '🎶', label: 'Echo front & behind', scale: 'pct', unit: '%' },
   lowheal:   { icon: '🌊', label: 'Heal+ when <50%', scale: 'pct', unit: '%' },
   regen:     { icon: '✨', label: 'Regen/s', scale: 'fx' },
   salvage:   { icon: '🪙', label: 'Gold after battle', scale: 'lvl' },
   rebirth:   { icon: '🪶', label: 'Rebirth heal', scale: 'pct', unit: '%' },
 };
 export const ECHO_KEYS = ['echo', 'echoBack', 'echoBoth'];
+
+// ------------------------------------------------------------------ triggers (v0.3)
+// One extra trigger per mon (optional), separate from its cooldown cast.
+// Combat: allyCast (filter by type and/or position: front, behind, adjacent), lowHp, foeLow, sudden, shieldGain, healed, doomBoom
+// Shop:   buy, sell, levelUp, trinket, allySold, reroll, win, loss
+// do: { cast } (cast now, cooldown resets) | { fx: {effect: base} } (scaled like the move) | { pct: 'dmg'|'heal'|'shield', v }
+//     | { grow: {atk|pow} } self, permanent | { growAll: {type, atk|pow} } | { growFront: {atk|pow} } | { growRand: {type, atk|pow} } | { gold }
+// Rules: a mon is never triggered by a copy of itself; each mon fires at most once per trigger chain (stops loops). No other limits.
+const tg = (on, d, extra = {}) => ({ on, do: d, ...extra });
+export const TRIGGERS = {
+  // rare "cast now" reactions
+  wickwisp: tg('allyCast', { cast: 1 }, { type: 'fire' }),
+  coilbee: tg('allyCast', { cast: 1 }, { type: 'electric' }),
+  kazooka: tg('allyCast', { cast: 1 }, { from: 'front' }),
+  rainbeau: tg('lowHp', { cast: 1 }),
+  monolith: tg('lowHp', { cast: 1 }),
+  banshriek: tg('sudden', { cast: 1 }),
+  // combat effects
+  encorca: tg('allyCast', { fx: { selfgrow: 5 } }, { type: 'sound' }),
+  cerebrox: tg('allyCast', { fx: { expose: 3 } }, { type: 'psychic' }),
+  stinkbug: tg('allyCast', { fx: { poison: 0.5 } }, { from: 'adjacent' }),
+  ripplet: tg('allyCast', { fx: { heal: 2 } }, { from: 'adjacent' }),
+  lanternik: tg('allyCast', { fx: { doom: 3 } }, { from: 'adjacent' }),
+  thornbit: tg('allyCast', { fx: { selfgrow: 5 } }, { from: 'front' }),
+  shiverling: tg('allyCast', { fx: { freezeTop: 0.3 } }, { from: 'behind' }),
+  miasmite: tg('foeLow', { fx: { spread: 60 } }),
+  glaciub: tg('foeLow', { fx: { freezeAll: 1 } }),
+  flarebat: tg('foeLow', { fx: { burn: 15 } }),
+  cragcub: tg('lowHp', { fx: { shield: 40 } }),
+  mistle: tg('lowHp', { fx: { heal: 40 } }),
+  raijumbo: tg('sudden', { fx: { haste: 30 } }),
+  blizzowl: tg('sudden', { fx: { chill: 25 } }),
+  spikeshell: tg('shieldGain', { pct: 'dmg', v: 25 }),
+  corallis: tg('healed', { pct: 'shield', v: 25 }),
+  wisplet: tg('healed', { fx: { doom: 2.5 } }),
+  phantomaw: tg('doomBoom', { pct: 'heal', v: 30 }),
+  // shop / run
+  budgeon: tg('buy', { growFront: { pow: 0.1 } }),
+  puddlefin: tg('sell', { growRand: { type: 'water', pow: 0.15 } }),
+  canrat: tg('sell', { gold: 5 }),
+  fungloom: tg('sell', { growAll: { type: 'poison', pow: 0.1 } }),
+  kilnkit: tg('levelUp', { growAll: { type: 'fire', atk: 0.08 } }),
+  hummingbard: tg('levelUp', { growAll: { type: 'sound', pow: 0.1 } }),
+  recyclops: tg('levelUp', { gold: 15 }),
+  snowpeck: tg('trinket', { grow: { pow: 0.1 } }),
+  geodot: tg('trinket', { grow: { pow: 0.2 } }),
+  gearwolf: tg('trinket', { grow: { atk: 0.15 } }),
+  psyfox: tg('trinket', { grow: { atk: 0.1, pow: 0.1 } }),
+  trashling: tg('allySold', { grow: { atk: 0.1 } }),
+  binbot: tg('allySold', { grow: { pow: 0.08 } }),
+  mindle: tg('reroll', { grow: { pow: 0.02 } }),
+  drumbo: tg('reroll', { grow: { atk: 0.03 } }),
+  elderoot: tg('win', { grow: { atk: 0.05 } }),
+  ghoulpup: tg('win', { grow: { atk: 0.05 } }),
+  leaflynx: tg('win', { grow: { pow: 0.04 } }),
+  toxitoad: tg('loss', { grow: { atk: 0.15 } }),
+};
+export const SHOP_TRIGGERS = ['buy', 'sell', 'levelUp', 'trinket', 'allySold', 'reroll', 'win', 'loss'];
+
+// Ongoing auras: who = front | behind | adjacent | nonadjacent; atk/pow/speed in %, scaled x1/1.5/2 by level
+export const AURAS = {
+  sproutle: { who: 'adjacent', atk: 10 },
+  zapling: { who: 'adjacent', speed: 8 },
+  pebblet: { who: 'behind', atk: 15 },
+  frostkit: { who: 'nonadjacent', pow: 8 },
+  dozzle: { who: 'front', pow: 15 },
+  chirpip: { who: 'front', atk: 12 },
+  gravelump: { who: 'behind', atk: 20 },
+  oakhorn: { who: 'adjacent', pow: 15 },
+  petalisk: { who: 'nonadjacent', atk: 12 },
+  sphinxie: { who: 'adjacent', speed: 10 },
+  maestrich: { who: 'behind', speed: 15 },
+  colossite: { who: 'behind', atk: 30, pow: 30 },
+  verdragon: { who: 'adjacent', atk: 20 },
+};
+export const WHO_TEXT = { front: 'the ally in front', behind: 'the ally behind', adjacent: 'adjacent allies', nonadjacent: 'all allies not next to it' };
+// Team grid: slots 1-3 (index 0-2) = front row, 4-6 (index 3-5) = back row; slot 4 is behind slot 1.
+// Adjacent = left/right/front/behind neighbour (no diagonals). Is slot j in zone "who" of slot i?
+export function inZone(who, i, j) {
+  if (i === j) return false;
+  const ri = Math.floor(i / 3), ci = i % 3, rj = Math.floor(j / 3), cj = j % 3;
+  const adj = (ri === rj && Math.abs(ci - cj) === 1) || (ci === cj && Math.abs(ri - rj) === 1);
+  if (who === 'front') return ci === cj && rj === ri - 1;
+  if (who === 'behind') return ci === cj && rj === ri + 1;
+  if (who === 'adjacent') return adj;
+  if (who === 'nonadjacent') return !adj;
+  return false;
+}
+const ON_TEXT = {
+  lowHp: 'When your team drops below 50% (once)', foeLow: 'When the enemy drops below 50% (once)', sudden: 'When sudden death starts',
+  shieldGain: 'When your team gains shield', healed: 'When your team is healed', doomBoom: 'When enemy Doom detonates',
+  buy: 'When bought', sell: 'When sold', levelUp: 'On level up', trinket: 'When you gain a trinket', allySold: 'When an ally is sold',
+  reroll: 'On each reroll', win: 'After each win', loss: 'After each loss',
+};
+const statTxt = (o, lvl) => Object.entries(o).filter(([k]) => k === 'atk' || k === 'pow').map(([k, v]) => `+${Math.round(v * 100 * lvl)}% ${k.toUpperCase()}`).join(' and ');
+export function triggerText(def, lvl = 1, pow = 1) {
+  const t = TRIGGERS[def.id]; if (!t) return '';
+  let when = ON_TEXT[t.on];
+  if (t.on === 'allyCast') when = t.from ? `When ${{ front: 'the ally in front', behind: 'the ally behind', adjacent: 'an adjacent ally' }[t.from]} casts` : `When an ally ${TYPES[t.type].name} mon casts`;
+  const d = t.do; let what = '';
+  if (d.cast) what = 'it casts too (cooldown resets)';
+  else if (d.fx) what = Object.entries(d.fx).map(([k, v]) => `${FX[k].icon} ${FX[k].label} ${Math.round(fxValue(k, v, def, lvl, pow) * 10) / 10}${FX[k].unit || ''}`).join(', ');
+  else if (d.pct) what = { dmg: `deals ${d.v}% of it as damage`, heal: `heals ${d.v}% of it`, shield: `gains ${d.v}% of it as shield` }[d.pct];
+  else if (d.grow) what = `this mon gets ${statTxt(d.grow, lvl)} for the run`;
+  else if (d.growAll) what = `all your ${TYPES[d.growAll.type].name} mons get ${statTxt(d.growAll, lvl)} for the run`;
+  else if (d.growFront) what = `the mon in front gets ${statTxt(d.growFront, lvl)} for the run`;
+  else if (d.growRand) what = `a random ${TYPES[d.growRand.type].name} ally gets ${statTxt(d.growRand, lvl)} for the run`;
+  else if (d.gold) what = `+${d.gold * lvl} gold`;
+  return `${when}: ${what}.`;
+}
+export function auraText(def, lvl = 1) {
+  const a = AURAS[def.id]; if (!a) return '';
+  const k = LV.pct[lvl], parts = [];
+  if (a.atk) parts.push(`+${Math.round(a.atk * k)}% ATK`);
+  if (a.pow) parts.push(`+${Math.round(a.pow * k)}% POW`);
+  const one = a.who === 'front' || a.who === 'behind';
+  if (a.speed) parts.push(`${one ? 'acts' : 'act'} ${Math.round(a.speed * k)}% faster`);
+  return `Ongoing: ${WHO_TEXT[a.who]} ${a.speed && !a.atk && !a.pow ? '' : (one ? 'gets ' : 'get ')}${parts.join(', ')}.`;
+}
 
 export const RANKS = [
   { name: 'Styrofoam', icon: '🥡', color: '#e8e8e8' },
@@ -345,6 +464,14 @@ export function trinketBonus(ids) {
 export const BOT_NAMES = ['Ash Tray', 'Misty Window', 'Brock Lee', 'Gary Oakley', 'Professor Elm Street', 'Nurse Jolene', 'Team Rocket Science', 'Lass Vegas', 'Youngster Joey', 'Bug Catcher Bob', 'Hiker Mike', 'Swimmer Sue', 'Picnicker Pam', 'Cool Trainer Kai', 'Ace Ventura', 'Super Nerd Ned', 'Fisher Price', 'Biker Bart', 'Gentleman Jim', 'Beauty Bella', 'Psychic Sam', 'Blackbelt Bo', 'Juggler Jules', 'Rancher Rita', 'Tamer Tina', 'Ranger Rick', 'Burglar Barry', 'Scientist Sid', 'Sailor Sal', 'Camper Cam', 'Dragon Tamer Dot', 'Old Man Pete', 'Twin Tia & Tea', 'Cue Ball Carl', 'Rocker Roxy', 'Medium Maud', 'Channeler Chan', 'Bird Keeper Birdie', 'Artist Arturo', 'Collector Colin'];
 
 export const CHANGELOG = [
+  { v: '0.3', date: '2026-11-25', notes: [
+    'Triggers: 43 mons now have a 🔔 trigger on top of their normal cast: when bought, sold, levelled up, gaining a trinket, rerolling, after wins or losses, when allies cast, at low HP, at sudden death, on shield or healing... A few even cast again on the spot.',
+    'Team grid: slots 1-3 are the front row, 4-6 the back row. 13 mons have an ✨ aura that buffs the ally in front, behind, next to them, or everyone not next to them. Echo now uses the grid too.',
+    'Bigger, cleaner shop: large cards in a 3-wide grid, clear prices and tiers, and a details sheet that slides up when you tap a mon.',
+    '3-second countdown before every battle, showing who you are about to fight.',
+    'Ranked opponents are now matched by a hidden team rating that predicts fights much better. The ⚡ Power you see is just the sum of your stats, for fun.',
+    'Full rebalance with the new mechanics (every type now wins 45-55% when stacked).',
+  ] },
   { v: '0.2', date: '2026-11-25', notes: [
     'Merge rewards: every merge offers a pick of 3 trinkets of the merged mon\'s tier. Trinkets now have tiers 1-5 (37 trinkets, incl. a Charm for each type).',
     'Prices are now about 10 × tier, ±5 by how strong each mon is. Income, rerolls, selling and event gold were rescaled to match.',
