@@ -1,0 +1,240 @@
+// Pocketomon battle engine. Pure and deterministic (no randomness), runs in browser and Node.
+// Clock ticks every 0.1s. Each tick: charge timers, mons that reach their cooldown cast in
+// slot order (slot 1 player, slot 1 opponent, slot 2 player, ...), then the battle ends if a
+// team is at 0 HP. Statuses tick once per second. Ties go to side A (the player).
+import { MON, RULES, LV, FX, ECHO_KEYS, fxValue } from './data.js';
+
+const DT = 0.1;
+const TPS = 10; // ticks per second
+const CAPS = { growth: 150, haste: 60, chill: 50, expose: 60, weaken: 40, scrap: 40, selfgrow: 200 };
+const DECAY = { chill: 3, haste: 3, expose: 2, weaken: 2 }; // points lost per second
+
+function makeUnit(inst, side, pos, team) {
+  if (!inst) return null;
+  const def = MON[inst.id];
+  let atk = inst.atk, pow = inst.pow;
+  if (pos === 0 && team.trinkets.includes('leaderbadge')) { atk *= 1.35; pow *= 1.35; }
+  if (pos === 5 && team.trinkets.includes('rearguard')) { atk *= 1.35; pow *= 1.35; }
+  if (pos === 0 && team.avatar === 'coach') { atk *= 1.3; pow *= 1.3; }
+  return { side, pos, def, lvl: inst.lvl, atk, pow, cd: def.cd, charge: 0, ramp: 0, casts: 0 };
+}
+
+function makeSide(team, side) {
+  const s = {
+    side, maxHp: team.maxHp, hp: team.maxHp, shield: 0,
+    burn: 0, poison: 0, chill: 0, haste: 0, expose: 0, weaken: 0, growth: 0,
+    doom: 0, doomT: 0, scrap: 0, rebirth: 0, rebirthUsed: false,
+    trinkets: team.trinkets || [], avatar: team.avatar,
+    dmgDealt: 0, healed: 0,
+  };
+  s.units = [];
+  for (let i = 0; i < 6; i++) s.units.push(makeUnit(team.mons[i], side, i, s));
+  s.prism = s.trinkets.includes('prism') ? 1.2 : 1;
+  s.whet = s.trinkets.includes('whetstone') ? 1.1 : 1;
+  return s;
+}
+
+// value of an effect for a unit (level + POW + prism), echo scale applied by caller
+function val(u, key, base, side) {
+  return fxValue(key, base, u.def.tier, u.lvl, u.pow) * side.prism;
+}
+
+export function simulate(teamA, teamB, opts = {}) {
+  const log = opts.log ? [] : null;
+  const S = [makeSide(teamA, 0), makeSide(teamB, 1)];
+  let events = [];
+  const ev = (e) => { if (log) events.push(e); };
+
+  const damage = (side, amt, kind, pierce) => {
+    if (amt <= 0) return 0;
+    if (kind !== 'hit' && kind !== 'sudden') amt *= 1 + side.expose / 100; // expose boosts all type damage too
+    let a = amt;
+    if (!pierce && side.shield > 0) { const ab = Math.min(side.shield, a); side.shield -= ab; a -= ab; if (ab > 0) ev({ k: 'absorb', s: side.side, v: ab }); }
+    side.hp -= a;
+    ev({ k: 'dmg', s: side.side, v: amt, kind });
+    return amt;
+  };
+  // healing past max HP overflows into shield at half value
+  const heal = (side, amt, noOverflow) => {
+    if (amt <= 0) return 0;
+    const h = Math.min(amt, side.maxHp - side.hp);
+    side.hp += h; side.healed += h;
+    ev({ k: 'heal', s: side.side, v: amt });
+    if (!noOverflow && amt > h) side.shield = Math.min(side.maxHp * RULES.shieldCap, side.shield + (amt - h) * 0.5);
+    return h;
+  };
+  const addShield = (side, amt) => {
+    const cap = side.maxHp * RULES.shieldCap;
+    side.shield = Math.min(cap, side.shield + amt);
+    ev({ k: 'shield', s: side.side, v: amt });
+  };
+  const add = (side, key, v) => { side[key] = Math.min(CAPS[key] ?? 1e9, side[key] + v); };
+
+  // Effects (non-damage). scale = echo scale
+  function applyFx(u, own, foe, key, base, scale, dealt) {
+    const v = val(u, key, base, own) * scale;
+    switch (key) {
+      case 'burn': foe.burn += v; ev({ k: 'fx', fx: 'burn', s: foe.side, v }); break;
+      case 'poison': foe.poison += v; ev({ k: 'fx', fx: 'poison', s: foe.side, v }); break;
+      case 'stoke': { const x = foe.burn * v / 100; foe.burn += x; ev({ k: 'fx', fx: 'stoke', s: foe.side, v: x }); break; }
+      case 'spread': { const x = foe.poison * v / 100; foe.poison += x; ev({ k: 'fx', fx: 'spread', s: foe.side, v: x }); break; }
+      case 'heal': {
+        let h = v;
+        if (u.def.fx.lowheal && own.hp < own.maxHp * 0.5) h *= 1 + val(u, 'lowheal', u.def.fx.lowheal, own) / 100;
+        heal(own, h); break;
+      }
+      case 'cleanse': {
+        let c = v; const b = Math.min(own.burn, c); own.burn -= b; c -= b;
+        own.poison = Math.max(0, own.poison - c);
+        ev({ k: 'fx', fx: 'cleanse', s: own.side, v }); break;
+      }
+      case 'shield': addShield(own, v); break;
+      case 'growth': add(own, 'growth', v); ev({ k: 'fx', fx: 'growth', s: own.side, v }); break;
+      case 'selfgrow': u.ramp = Math.min(CAPS.selfgrow, u.ramp + v); ev({ k: 'fx', fx: 'selfgrow', s: own.side, pos: u.pos, v }); break;
+      case 'haste': add(own, 'haste', v); ev({ k: 'fx', fx: 'haste', s: own.side, v }); break;
+      case 'chill': add(foe, 'chill', v); ev({ k: 'fx', fx: 'chill', s: foe.side, v }); break;
+      case 'expose': add(foe, 'expose', v); ev({ k: 'fx', fx: 'expose', s: foe.side, v }); break;
+      case 'weaken': add(foe, 'weaken', v); ev({ k: 'fx', fx: 'weaken', s: foe.side, v }); break;
+      case 'doom': foe.doom += v; if (foe.doomT <= 0) foe.doomT = 5; ev({ k: 'fx', fx: 'doom', s: foe.side, v }); break;
+      case 'scrap': add(own, 'scrap', v); ev({ k: 'fx', fx: 'scrap', s: own.side, v }); break;
+      case 'charge':
+        for (const o of own.units) if (o && o !== u) o.charge += v;
+        ev({ k: 'fx', fx: 'charge', s: own.side, v }); break;
+      case 'chargeNext': {
+        const n = own.units.slice(u.pos + 1).find(Boolean);
+        if (n) { n.charge += v; ev({ k: 'fx', fx: 'charge', s: own.side, pos: n.pos, v }); }
+        break;
+      }
+      case 'freeze': {
+        const t = foe.units[u.pos] || foe.units.find(Boolean);
+        if (t) { t.charge = Math.max(-2, t.charge - v); ev({ k: 'fx', fx: 'freeze', s: foe.side, pos: t.pos, v }); }
+        break;
+      }
+      case 'freezeTop': {
+        let t = null;
+        for (const o of foe.units) if (o && (!t || o.charge / o.cd > t.charge / t.cd)) t = o;
+        if (t) { t.charge = Math.max(-2, t.charge - v); ev({ k: 'fx', fx: 'freeze', s: foe.side, pos: t.pos, v }); }
+        break;
+      }
+      case 'freezeAll':
+        for (const o of foe.units) if (o) o.charge = Math.max(-2, o.charge - v);
+        ev({ k: 'fx', fx: 'freeze', s: foe.side, v }); break;
+      case 'lifesteal': if (dealt > 0) heal(own, dealt * v / 100, true); break;
+      default: break; // bash, execute, scrapper, lowheal, echo*: handled elsewhere
+    }
+  }
+
+  function findEchoTarget(own, from, dir) {
+    for (let p = from + dir; p >= 0 && p < 6; p += dir) {
+      const o = own.units[p];
+      if (o && !ECHO_KEYS.some(k => o.def.fx[k])) return o;
+    }
+    return null;
+  }
+
+  function cast(u, scale, echoed, t) {
+    const own = S[u.side], foe = S[1 - u.side];
+    const d = u.def, fx = d.fx;
+    ev({ k: 'cast', s: u.side, pos: u.pos, echo: !!echoed, by: echoed ? echoed.pos : undefined });
+    // ---- direct hit
+    let base = fxValue('dmg', d.dmg, d.tier, u.lvl, u.atk);
+    if (d.type === 'junk' && own.scrap > 0) base += own.scrap * 0.4 * LV.dmg[u.lvl] * (1 + (fx.scrapper ? val(u, 'scrapper', fx.scrapper, own) / 100 : 0));
+    if (fx.bash) base += own.shield * val(u, 'bash', fx.bash, own) / 100;
+    let mult = (1 + own.growth / 100 + u.ramp / 100) * (1 + foe.expose / 100) * (1 - own.weaken / 100) * own.whet;
+    if (fx.execute && foe.hp < foe.maxHp * 0.3) mult *= 1 + val(u, 'execute', fx.execute, own) / 100;
+    const dealt = damage(foe, base * mult * scale, 'hit', false);
+    own.dmgDealt += dealt;
+    // ---- effects in definition order
+    for (const key of Object.keys(fx)) applyFx(u, own, foe, key, fx[key], scale, dealt);
+    u.casts++;
+    // ---- echoes (never chain)
+    if (!echoed) {
+      const targets = [];
+      if (fx.echo) targets.push([findEchoTarget(own, u.pos, -1) || findEchoTarget(own, u.pos, 1), 'echo']);
+      if (fx.echoBack) targets.push([findEchoTarget(own, u.pos, 1) || findEchoTarget(own, u.pos, -1), 'echoBack']);
+      if (fx.echoBoth) { targets.push([findEchoTarget(own, u.pos, -1), 'echoBoth']); targets.push([findEchoTarget(own, u.pos, 1), 'echoBoth']); }
+      for (const [tgt, key] of targets) {
+        if (!tgt) continue;
+        const pct = Math.min(125, val(u, key, fx[key], { prism: 1 }));
+        cast(tgt, scale * pct / 100, u, t);
+      }
+    }
+  }
+
+  // ---- battle start: passives in slot order
+  for (let p = 0; p < 6; p++) for (const side of S) {
+    const u = side.units[p];
+    if (!u) continue;
+    const pas = u.def.pas;
+    if (pas.rebirth) side.rebirth = Math.max(side.rebirth, val(u, 'rebirth', pas.rebirth, side));
+    if (pas.start) {
+      const foe = S[1 - side.side];
+      for (const [key, base] of Object.entries(pas.start)) applyFx(u, side, foe, key, base, 1, 0);
+      ev({ k: 'cast', s: side.side, pos: p, start: true });
+    }
+  }
+  for (const side of S) if (side.trinkets.includes('warmblanket')) addShield(side, side.maxHp * 0.1);
+  if (log) { log.push(frame(0, S, events)); events = []; }
+
+  const speed = (side, t) => {
+    let h = 1 + side.haste / 100;
+    if (side.trinkets.includes('hourglass')) h += 0.08;
+    if (t < 4 && side.trinkets.includes('openingact')) h += 0.5;
+    return Math.max(0.3, h * (1 - side.chill / 100));
+  };
+
+  let tick = 0, winner = null, endT = 0;
+  const maxTicks = RULES.hardCapSeconds * TPS;
+  while (tick < maxTicks) {
+    tick++;
+    const t = tick / TPS;
+    // 1) charge
+    for (const side of S) { const sp = speed(side, t) * DT; for (const u of side.units) if (u) u.charge += sp; }
+    // 2) casts in slot order, player first on the same slot
+    for (let p = 0; p < 6; p++) for (const side of S) {
+      const u = side.units[p];
+      if (u && u.charge >= u.cd) { u.charge -= u.cd; cast(u, 1, null, t); }
+    }
+    // 3) per-second statuses
+    if (tick % TPS === 0) {
+      for (const side of S) {
+        if (side.burn > 0.05) { damage(side, side.burn, 'burn', false); side.burn *= 0.7; if (side.burn < 0.5) side.burn = 0; }
+        if (side.poison > 0) damage(side, side.poison * 0.33, 'poison', true);
+        if (side.doom > 0) { side.doomT -= 1; if (side.doomT <= 0) { damage(side, side.doom, 'doom', true); ev({ k: 'boom', s: side.side, v: side.doom }); side.doom = 0; side.doomT = 0; } }
+        for (const u of side.units) if (u && u.def.pas.regen) heal(side, val(u, 'regen', u.def.pas.regen, side), true);
+        for (const k in DECAY) side[k] = Math.max(0, side[k] - DECAY[k]);
+        if (t > RULES.battleSeconds) {
+          const n = t - RULES.battleSeconds;
+          let drain = side.maxHp * RULES.suddenDeathRamp * n;
+          if (side.trinkets.includes('overtime')) drain *= 0.5;
+          damage(side, drain, 'sudden', true);
+        }
+      }
+      if (t > RULES.battleSeconds && log) events.push({ k: 'sudden', n: t - RULES.battleSeconds });
+    }
+    // 4) rebirth (once) if low but alive
+    for (const side of S) if (side.rebirth && !side.rebirthUsed && side.hp > 0 && side.hp < side.maxHp * 0.3) {
+      side.rebirthUsed = true; heal(side, side.maxHp * side.rebirth / 100, true); ev({ k: 'rebirth', s: side.side });
+    }
+    if (log) { log.push(frame(t, S, events)); events = []; }
+    // 5) end check
+    if (S[0].hp <= 0 || S[1].hp <= 0) { winner = S[1].hp <= 0 ? 0 : 1; endT = t; break; }
+  }
+  if (winner === null) { endT = RULES.hardCapSeconds; winner = (S[0].hp / S[0].maxHp >= S[1].hp / S[1].maxHp) ? 0 : 1; }
+  return {
+    winner, t: endT, log,
+    hp: [Math.max(0, S[0].hp), Math.max(0, S[1].hp)], maxHp: [S[0].maxHp, S[1].maxHp],
+    dealt: [S[0].dmgDealt, S[1].dmgDealt], healed: [S[0].healed, S[1].healed],
+  };
+}
+
+function frame(t, S, events) {
+  return {
+    t, ev: events,
+    s: S.map(x => ({
+      hp: x.hp, sh: x.shield, burn: x.burn, poison: x.poison, chill: x.chill, haste: x.haste,
+      expose: x.expose, weaken: x.weaken, growth: x.growth, doom: x.doom, doomT: x.doomT, scrap: x.scrap,
+      ch: x.units.map(u => u ? Math.max(0, Math.min(1, u.charge / u.cd)) : 0),
+    })),
+  };
+}
