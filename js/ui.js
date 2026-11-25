@@ -1,9 +1,9 @@
 // Pocketomon UI: title, events, shop, battle replay, run end. Mobile first, tap to select.
-import * as D from './data.js?v=0.4';
-import * as R from './run.js?v=0.4';
-import { simulate } from './battle.js?v=0.4';
-import { monSvg } from './art.js?v=0.4';
-import { LIBRARY } from './snapdata.js?v=0.4';
+import * as D from './data.js?v=0.5';
+import * as R from './run.js?v=0.5';
+import { simulate } from './battle.js?v=0.5';
+import { monSvg } from './art.js?v=0.5';
+import { LIBRARY } from './snapdata.js?v=0.5';
 
 const { MON, TYPES, FX, RULES } = D;
 const $app = document.getElementById('app');
@@ -77,11 +77,10 @@ function detail(m, ctx) {
     btns = `<button class="primary" data-act="buy" ${run.gold < price ? 'disabled' : ''}>Buy 💰${price}</button>
       <button data-act="lock">${ctx.locked ? '🔓 Unlock' : '🔒 Lock for next day'}</button>`;
   } else if (ctx.zone === 'team' || ctx.zone === 'bench') {
-    btns = `<button data-act="sell">Sell +💰${R.sellValue(run, m)}</button>
-      <button data-act="${ctx.zone === 'team' ? 'tobench' : 'toteam'}">${ctx.zone === 'team' ? 'To bench' : 'To team'}</button>`;
+    btns = `<button data-act="sell">Sell +💰${R.sellValue(run, m)}</button>`;
     if (lvl < 3) note = `<div class="note dim">${lvl === 1 ? 'Merge 3 copies → level 2.' : 'Merge with another level 2 → level 3.'}</div>`;
   }
-  return `<div class="detail ${ctx.sheet ? 'sheet' : ''}" style="--tc:${T.color}">
+  return `<div class="detail ${ctx.sheet ? 'sheet' : ''} ${ctx.zone === 'shop' ? 'top' : ''}" style="--tc:${T.color}">
     ${ctx.sheet ? '<button class="sheetx" data-act="deselect">✕</button>' : ''}
     <div class="d-head"><div class="d-art">${monSvg(m.id)}</div>
       <div><div class="d-name">${def.name} <span class="lvtxt">${ctx.zone === 'dex' ? '' : 'Lv' + lvl}</span></div>
@@ -107,7 +106,7 @@ function trinketCard(o, sel) {
 }
 function trinketSheet(o) {
   const t = D.TRINKET[o.id], price = D.trinketPrice(t);
-  return `<div class="detail sheet" style="--tc:#ffd54a"><button class="sheetx" data-act="deselect">✕</button>
+  return `<div class="detail sheet top" style="--tc:#ffd54a"><button class="sheetx" data-act="deselect">✕</button>
     <div class="d-head"><div class="d-art ticonbig">${t.icon}</div><div><div class="d-name">${esc(t.name)}</div>
     <div class="d-meta"><span class="tierpill t${t.tier}">Tier ${t.tier} trinket</span></div></div></div>
     <div class="trigline">${esc(t.desc)}</div>
@@ -117,24 +116,25 @@ function trinketSheet(o) {
 }
 function topbar() {
   const rk = D.RANKS[prof.rank];
+  const ids = [...new Set(run.trinkets)];
+  const MAXT = 7;
   return `<header class="topbar">
-    <div class="tb-l"><span class="day">Day ${run.day}</span>${run.mode === 'ranked' ? `<span class="mode" style="color:${rk.color}">${rk.icon} Ranked</span>` : '<span class="mode">Normal</span>'}</div>
+    <div class="tb-l"><span class="day">Day ${run.day}</span>${run.mode === 'ranked' ? `<span class="mode" style="color:${rk.color}">${rk.icon}</span>` : ''}</div>
     <div class="tb-r"><span title="Gold">💰${run.gold}</span><span title="Lives">❤️${run.lives}</span><span title="Wins">🏆${run.wins}/${RULES.winsToChampion}</span>
     <button class="icon" data-act="menu">☰</button></div></header>
-    <div class="subbar"><span>${run.avatar ? D.AVATAR[run.avatar].face + ' ' + D.AVATAR[run.avatar].name : ''}</span>
-    <span>⚡ Power ${R.runPower(run)}</span><span>❤️ HP ${R.maxHpFor(run.day, run.hpBonus, run.avatar, run.trinkets)}</span></div>
-    <div class="typesbar">${run.types.map(t => `<span class="typechip sm" style="background:${TYPES[t].color}">${TYPES[t].icon} ${TYPES[t].name}</span>`).join('')}
-    ${trinketIcons(run.trinkets)}</div>`;
+    <div class="infobar"><span>⚡${R.runPower(run)}</span><span>🩷${R.maxHpFor(run.day, run.hpBonus, run.avatar, run.trinkets)}</span>
+      <span class="tys">${run.types.map(t => `<i style="background:${TYPES[t].color}">${TYPES[t].icon}</i>`).join('')}</span>
+      <span class="trks">${trinketIcons(run.trinkets.filter(t => ids.indexOf(t) < MAXT))}${ids.length > MAXT ? `<span class="trk more" data-act="menu">+${ids.length - MAXT}</span>` : ''}</span></div>`;
 }
 
 function teamRows(opts = {}) {
   const tgt = opts.target;
   const isSel = (z, i) => ui.sel && ui.sel.zone === z && ui.sel.i === i;
   const tOk = (m) => tgt && R.validTarget(run, tgt, m);
-  return `<div class="sect"><h3>Team</h3><span class="dim">front row casts first · back row sits behind it</span></div>
-    <div class="grid3 team">${run.team.map((m, i) => card(m, { zone: 'team', i, sel: isSel('team', i), label: i < 3 ? `Front ${i + 1}` : `Back ${i + 1}`, target: tOk(m) })).join('')}</div>
-    <div class="sect"><h3>Bench</h3><span class="dim">doesn't fight</span></div>
-    <div class="gridb" style="--n:${run.bench.length}">${run.bench.map((m, i) => card(m, { zone: 'bench', i, sel: isSel('bench', i), target: tOk(m), small: true })).join('')}</div>`;
+  return `<div class="zlabel">Team <span>front row casts first</span></div>
+    <div class="zone team">${run.team.map((m, i) => card(m, { zone: 'team', i, sel: isSel('team', i), label: i < 3 ? `Front ${i + 1}` : `Back ${i + 1}`, target: tOk(m) })).join('')}</div>
+    <div class="zlabel">Bench <span>doesn't fight</span></div>
+    <div class="zone bench" style="--n:${run.bench.length}">${run.bench.map((m, i) => card(m, { zone: 'bench', i, sel: isSel('bench', i), target: tOk(m), small: true })).join('')}</div>`;
 }
 
 // ---------------------------------------------------------------- screens
@@ -235,18 +235,20 @@ function renderTitle() {
 function renderEvent() {
   const ev = run.event;
   const pend = ui.pending !== null ? ev.choices[ui.pending] : null;
-  $app.innerHTML = `${topbar()}<main class="scroll">
-    <div class="event"><h2>${ev.avatar ? '👋 ' : '🗺️ '}${esc(ev.title)}</h2>
-    ${pend ? `<div class="note big">Tap a mon for <b>${esc(pend.title)}</b> <button class="small" data-act="cancelpick">Cancel</button></div>` : '<div class="sub">Pick one.</div>'}
-    <div class="choices">${ev.choices.map((c, i) => {
+  const isSel = ui.sel;
+  const selM = isSel && (isSel.zone === 'team' ? run.team : run.bench)[isSel.i];
+  $app.innerHTML = `${topbar()}<main class="fit eventfit">
+    <div class="evhead"><h2>${ev.avatar ? '👋 ' : '🗺️ '}${esc(ev.title)}</h2>
+    ${pend ? `<div class="note pick">Tap a glowing mon for <b>${esc(pend.title)}</b> <button class="small" data-act="cancelpick">Cancel</button></div>` : ''}</div>
+    <div class="choices ${ev.avatar ? 'big' : ''}">${ev.choices.map((c, i) => {
       const blocked = R.choiceBlocked(run, c);
       return `<button class="choice ${ui.pending === i ? 'sel' : ''}" data-act="choose" data-i="${i}" ${blocked ? 'disabled' : ''}>
         <div class="c-ic">${c.icon}</div><div class="c-t">${esc(c.title)}</div><div class="c-d">${esc(c.desc)}</div>
         ${c.id && MON[c.id] && c.kind === 'wild' ? `<div class="c-mon">${monSvg(c.id)}</div>` : ''}
         ${blocked ? `<div class="c-x">${blocked}</div>` : ''}</button>`;
-    }).join('')}</div></div>
-    ${run.avatar ? teamRows({ target: pend && pend.needsTarget ? pend : null }) : `<div class="sub center">Your shop today: ${run.types.map(t => TYPES[t].icon).join(' ')} types. Trainer perks last the whole run.</div>`}
-  </main>`;
+    }).join('')}</div>
+    ${run.avatar ? `<div class="evteam">${teamRows({ target: pend && pend.needsTarget ? pend : null })}</div>` : `<div class="sub center">Today's shop types: ${run.types.map(t => TYPES[t].icon + ' ' + TYPES[t].name).join(' · ')}. Trainer perks last the whole run.</div>`}
+  </main>${selM && !pend ? detail(selM, { zone: 'info', sheet: true }) : ''}`;
 }
 
 function renderShop() {
@@ -263,19 +265,19 @@ function renderShop() {
   const freeR = run.freeRerolls + run.rerollBank;
   const tq = R.currentTrinketChoice(run);
   if (tq) saveRun();
-  const tpanel = tq ? `<div class="tpick"><h2>✨ Merge reward!</h2><div class="sub">Pick a tier ${tq.tier} trinket. It lasts the whole run.${run.trinketQueue.length > 1 ? ` (${run.trinketQueue.length - 1} more after this)` : ''}</div>
+  const tpanel = tq ? `<div class="popup"><div class="tpick"><h2>✨ Merge reward!</h2><div class="sub">Pick a tier ${tq.tier} trinket. It lasts the whole run.${run.trinketQueue.length > 1 ? ` (${run.trinketQueue.length - 1} more after this)` : ''}</div>
     <div class="choices">${tq.options.map(id => { const t = D.TRINKET[id]; return `<button class="choice" data-act="picktrinket" data-id="${id}">
-      <div class="c-ic">${t.icon}</div><div class="c-t">${esc(t.name)} <span class="ttier t${t.tier}">T${t.tier}</span></div><div class="c-d">${esc(t.desc)}</div></button>`; }).join('')}</div></div>` : '';
+      <div class="c-ic">${t.icon}</div><div class="c-t">${esc(t.name)} <span class="ttier t${t.tier}">T${t.tier}</span></div><div class="c-d">${esc(t.desc)}</div></button>`; }).join('')}</div></div></div>` : '';
   const ownTag = (id) => { const n = R.owned(run).filter(x => x.m.id === id && x.m.lvl === 1).length; return n ? (n >= 2 ? '⤴ MERGE' : `own ${n}`) : ''; };
-  $app.innerHTML = `${topbar()}<main class="scroll ${selM || tsel ? 'with-sheet' : ''}">
-    ${tpanel}
+  const nOff = run.shop.length + 1;
+  const cols = nOff > 6 ? 4 : 3;
+  $app.innerHTML = `${topbar()}<main class="fit shopfit" data-act-bg="1">
     ${teamRows()}
-    <div class="sect"><h3>Shop</h3><span class="dim">tiers up to ${D.maxTier(run.day)}${run.sale ? ' · <b class="good">SALE −5</b>' : ''}</span></div>
-    <div class="grid3 shop">${run.shop.map((o, i) => o.mon ? card(o.mon, {
+    <div class="zlabel">Shop <span>tiers up to ${D.maxTier(run.day)}${run.sale ? ' · <b class="good">SALE −5</b>' : ''}</span></div>
+    <div class="zone shop" style="--c:${cols};--r:${Math.ceil(nOff / cols)}">${run.shop.map((o, i) => o.mon ? card(o.mon, {
       zone: 'shop', i, price: R.offerPrice(run, MON[o.mon.id]), locked: o.locked, sel: sel && sel.zone === 'shop' && sel.i === i, own: ownTag(o.mon.id),
     }) : `<div class="card sold">SOLD</div>`).join('')}${trinketCard(run.tshop, sel && sel.zone === 'tshop')}</div>
-    <div class="hint">Tap to see details. Hold and drag a shop card onto a slot to buy it, drag your mons to swap them, or drag one onto the bottom bar to sell.</div>
-  </main>
+  </main>${tpanel}
   ${selM ? detail(selM, ctx) : tsel ? trinketSheet(run.tshop) : ''}
   <footer class="actionbar" id="actionbar">
     <button data-act="reroll" ${run.gold < rc ? 'disabled' : ''}>🎲 Reroll ${rc ? '💰' + rc : `free (${freeR})`}</button>
@@ -319,7 +321,8 @@ function helpHtml() {
   <p><b>Battles</b> are automatic. Every mon casts its move each time its cooldown fills, in slot order (slot 1 first). All mons hit the enemy team's <b>shared HP bar</b>. After 30s, <b>sudden death</b> drains both teams faster every second. Ties go to you.</p>
   <p><b>Shop</b>: up to 6 mons on your team, extras wait on the bench. Each shop copy has its own ATK and POW roll. Buy <b>3 copies</b> of a mon to merge it into <b>level 2</b>, and two level 2s into <b>level 3</b>. Merging keeps the best ATK and POW of the copies. Tier never changes. Lock offers you want to keep for tomorrow; unspent gold carries over.</p>
   <p><b>Each run uses 5 random types</b> in the shop, so copies show up often enough to merge.</p>
-  <p><b>Drag and drop</b>: hold a shop card for a moment, then drag it onto a team or bench slot to buy it there (a slot holding 2 copies completes a merge). Drag your own mons to swap them, or onto the bottom bar to sell. Releasing anywhere else cancels. Tap any card to see its details.</p>
+  <p><b>Tap</b> any card to see its details (tap another to switch, ✕ or empty space to close). Taps never move or buy anything.</p>
+  <p><b>Drag</b> to act: drag a shop card onto an empty team or bench slot to buy it there (or onto a slot holding 2 copies to merge). Drag your mons onto other slots to swap them, or onto the bottom bar to sell. Releasing anywhere else cancels. The details panel also has Buy and Sell buttons.</p>
   <p><b>Trinkets</b>: one is always for sale in the shop. Some mons make junk trinkets (no effect, but they count for "when you gain a trinket" triggers) or find real ones.</p>
   <p><b>Team grid</b>: slots 1-3 are the front row and cast first; 4-6 are the back row. "Behind" means the slot directly behind; "adjacent" means left, right, front or behind (no diagonals).</p>
   <p><b>🔔 Triggers</b>: some mons react to things (being bought or sold, levelling up, trinkets, rerolls, wins, allies casting, low HP, sudden death...). A mon is never triggered by a copy of itself, and fires at most once per chain. <b>✨ Auras</b> constantly buff nearby (or far) allies.</p>
@@ -353,8 +356,7 @@ function tapSlot(zone, i) {
   if (zone === 'dex') { ui.dexSel = ui.dexSel === i ? null : i; return render(); }
   if (zone === 'final') return;
   // event targeting
-  if (run.phase === 'event') {
-    if (ui.pending === null) return;
+  if (run.phase === 'event' && ui.pending !== null) {
     const m = (zone === 'team' ? run.team : run.bench)[i];
     if (!m) return;
     if (!R.validTarget(run, run.event.choices[ui.pending], m)) return toast('That mon can\'t be picked for this');
@@ -362,18 +364,12 @@ function tapSlot(zone, i) {
     if (!res.ok) return toast(res.msg);
     ui.pending = null; saveRun(); toast(res.msg); return render();
   }
+  // taps only ever select (or deselect); moving, swapping and buying into a slot is drag-only
   if (zone === 'tshop') { ui.sel = ui.sel && ui.sel.zone === 'tshop' ? null : { zone: 'tshop', i: 0 }; return render(); }
-  const sel = ui.sel;
   const slotM = zone === 'shop' ? (run.shop[i] && run.shop[i].mon) : (zone === 'team' ? run.team : run.bench)[i];
-  if (!sel) { if (slotM) ui.sel = { zone, i }; return render(); }
-  if (sel.zone === zone && sel.i === i) { ui.sel = null; return render(); }
-  if (sel.zone === 'shop' && zone !== 'shop') {
-    const res = R.buy(run, sel.i, { zone, i });
-    toast(res.msg); if (res.ok) { ui.sel = res.at || null; saveRun(); }
-    return render();
-  }
-  if (sel.zone !== 'shop' && zone !== 'shop') { R.move(run, sel, { zone, i }); ui.sel = null; saveRun(); return render(); }
-  ui.sel = slotM ? { zone, i } : null; render();
+  if (ui.sel && ui.sel.zone === zone && ui.sel.i === i) ui.sel = null;
+  else ui.sel = slotM ? { zone, i } : null;
+  render();
 }
 
 const actions = {
@@ -468,10 +464,12 @@ document.addEventListener('click', (e) => {
   if (c && suppressClick) return;
   if (c && c.closest('#app')) { const z = c.dataset.z; tapSlot(z, z === 'dex' ? c.dataset.i : Number(c.dataset.i)); return; }
   if (e.target === $modal) closeModal();
+  // tapping empty space closes the details sheet
+  else if (ui.sel && e.target.closest && e.target.closest('main.fit') && !e.target.closest('.card, button')) { ui.sel = null; render(); }
 });
 
 // ---------------------------------------------------------------- drag and drop (shop screen)
-// Touch: hold a card ~0.2s, then drag (a quick swipe scrolls instead). Mouse: press and move 10px.
+// Touch or mouse: press a card and move ~20px to start dragging (the shop never scrolls, so no hold is needed).
 // Only a release over a valid target does anything; anywhere else cancels. Taps still open the details sheet.
 const DRAG = { on: false, pend: null };
 let suppressClick = false;
@@ -521,7 +519,7 @@ function moveGhost(x, y) {
 }
 function autoScroll() {
   if (!DRAG.on) return;
-  const main = document.querySelector('#app main.scroll');
+  const main = document.querySelector('#app main.scroll'); // (shop/event screens don't scroll any more)
   if (main) { if (DRAG.y < 140) main.scrollTop -= 10; else if (DRAG.y > window.innerHeight - 150) main.scrollTop += 10; }
   requestAnimationFrame(autoScroll);
 }
@@ -553,15 +551,14 @@ function pointDown(e, x, y, touch) {
   if (!card) return;
   const src = dragSource(card); if (!src) return;
   DRAG.pend = { src, card, x, y, x0: x, y0: y, touch };
-  if (touch) DRAG.pend.timer = setTimeout(beginDrag, 220);
 }
 function pointMove(e, x, y) {
   if (DRAG.on) { e.preventDefault(); moveGhost(x, y); return; }
   const p = DRAG.pend; if (!p) return;
   const d = Math.hypot(x - p.x0, y - p.y0);
   p.x = x; p.y = y;
-  if (p.touch) { if (d > 10) { clearTimeout(p.timer); DRAG.pend = null; } } // moved before the hold: it's a scroll
-  else if (d > 10) beginDrag();
+  if (p.touch) e.preventDefault();
+  if (d > 20) beginDrag();
 }
 function pointUp(x, y) {
   if (DRAG.pend) { clearTimeout(DRAG.pend.timer); DRAG.pend = null; }

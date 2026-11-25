@@ -1,5 +1,5 @@
 // Pocketomon — game data. All numbers are first-pass and tuned by tools/gen.mjs.
-export const VERSION = '0.4';
+export const VERSION = '0.5';
 
 export const RULES = {
   battleSeconds: 30,       // regular time
@@ -486,6 +486,13 @@ export function trinketBonus(ids) {
 export const BOT_NAMES = ['Ash Tray', 'Misty Window', 'Brock Lee', 'Gary Oakley', 'Professor Elm Street', 'Nurse Jolene', 'Team Rocket Science', 'Lass Vegas', 'Youngster Joey', 'Bug Catcher Bob', 'Hiker Mike', 'Swimmer Sue', 'Picnicker Pam', 'Cool Trainer Kai', 'Ace Ventura', 'Super Nerd Ned', 'Fisher Price', 'Biker Bart', 'Gentleman Jim', 'Beauty Bella', 'Psychic Sam', 'Blackbelt Bo', 'Juggler Jules', 'Rancher Rita', 'Tamer Tina', 'Ranger Rick', 'Burglar Barry', 'Scientist Sid', 'Sailor Sal', 'Camper Cam', 'Dragon Tamer Dot', 'Old Man Pete', 'Twin Tia & Tea', 'Cue Ball Carl', 'Rocker Roxy', 'Medium Maud', 'Channeler Chan', 'Bird Keeper Birdie', 'Artist Arturo', 'Collector Colin'];
 
 export const CHANGELOG = [
+  { v: '0.5', date: '2026-11-25', notes: [
+    'The shop and event screens now fit on one screen: no scrolling, ever. Cards size themselves to your phone.',
+    'Taps only select: tapping a mon shows its details, tapping another just switches. Nothing moves or gets bought by tapping.',
+    'Moving is drag-only, with no hold needed: drag a card about a finger-width onto a glowing slot. Releasing anywhere else cancels. Buy and Sell buttons are still in the details panel.',
+    'Shop items open their details at the top, so you can keep tapping through the shop; your mons open theirs at the bottom.',
+    'The merge-reward trinket pick is now a popup.',
+  ] },
   { v: '0.4', date: '2026-11-25', notes: [
     'Drag and drop: hold a shop card for a moment, then drag it onto a slot to buy it there. Drag your mons to swap them, or onto the bottom bar to sell. Releasing anywhere else cancels, and tapping still shows details.',
     'Merges get a fanfare (level 3 even more), and every new trinket pops out of a gift box.',
