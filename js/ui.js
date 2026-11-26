@@ -1,9 +1,9 @@
 // Pocketomon UI: title, events, shop, battle replay, run end. Mobile first, tap to select.
-import * as D from './data.js?v=0.6';
-import * as R from './run.js?v=0.6';
-import { simulate, previewTeam } from './battle.js?v=0.6';
-import { monSvg } from './art.js?v=0.6';
-import { LIBRARY } from './snapdata.js?v=0.6';
+import * as D from './data.js?v=0.6b';
+import * as R from './run.js?v=0.6b';
+import { simulate, previewTeam } from './battle.js?v=0.6b';
+import { monSvg } from './art.js?v=0.6b';
+import { LIBRARY } from './snapdata.js?v=0.6b';
 
 const { MON, TYPES, FX, RULES } = D;
 const $app = document.getElementById('app');
@@ -478,7 +478,7 @@ const actions = {
   },
   gobattle() { closeModal(); startBattle(); },
   speed2() { prof.speed = prof.speed === 2 ? 1 : 2; saveProf(); if (ui.battle) { ui.battle.speed = prof.speed; markSpeed(); } },
-  pause() { const b = ui.battle; if (!b || b.done) return; b.paused = !b.paused; const el = $('pausebtn'); if (el) { el.textContent = b.paused ? '▶' : '⏸'; el.classList.toggle('on', b.paused); } },
+  pause() { const b = ui.battle; if (!b || b.done) return; b.paused = !b.paused; const el = $('pausebtn'); if (el) { el.textContent = b.paused ? '▶' : '❚❚'; el.classList.toggle('on', b.paused); } },
   hideresult() { $('bresult').classList.add('hidden'); $('bshow').classList.remove('hidden'); },
   showresult() { if (ui.battle) { ui.battle.insp = null; renderInsp(); } $('bshow').classList.add('hidden'); $('bresult').classList.remove('hidden'); },
   bclose() { if (ui.battle) { ui.battle.insp = null; renderInsp(); } },
@@ -688,7 +688,7 @@ function buildBattle() {
     ${bSide(b.opp, 1, b.opp.name)}
     <div class="b-mid"><div class="timer" id="timer">30.0</div><div class="banner" id="banner"></div></div>
     ${bSide(b.me, 0, 'You')}
-    <div class="b-ctl"><button id="pausebtn" class="pausebtn" data-act="pause">⏸</button><button class="spd" id="spd2" data-act="speed2">2×</button><button data-act="skip">Skip ⏭</button></div>
+    <div class="b-ctl"><button id="pausebtn" class="pausebtn" data-act="pause">❚❚</button><button class="spd" id="spd2" data-act="speed2">2×</button><button data-act="skip">Skip ⏭</button></div>
     <div id="fxlayer"></div><div id="binsp"></div><div id="bresult" class="hidden"></div>
     <button id="bshow" class="primary bshow hidden" data-act="showresult">Show result</button>
     <div class="countdown" id="countdown"><div class="cd-vs">Day ${b.day} · vs</div>

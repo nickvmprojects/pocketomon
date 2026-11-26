@@ -438,3 +438,31 @@ main.fit { flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; flex-
 .zone .card .own { bottom: 37px; }
 .b-ctl .pausebtn { font-family: system-ui, sans-serif; }
 .actionbar button[data-act=reroll] { white-space: nowrap; font-size: 18px; }
+
+/* ================= v0.6b: readability / contrast ================= */
+:root { --dim: #c8cff0; --panel: #1f2650; }
+.dim, .sub, .tag, .ver, .mode, .hint, .c-d, .trk.more { color: var(--dim); font-weight: 500; }
+.flavor { color: #d7dcf5; font-weight: 500; }
+.chip { background: #0c1028; border-color: #4a5690; color: #f3efe2; }
+.srcs { background: #0c1028; color: #dfe4fb; font-weight: 500; }
+.live, .note { background: #0c1028; color: #e6e9fb; }
+.detail.sheet { background: linear-gradient(#232b58, #1a2047); }
+.zlabel span { color: #1b1424; font-weight: 600; }
+.zlabel.zteam span { color: #fff; }
+.slotno { color: #8c98d8; font-weight: 700; }
+.card.empty { border-color: #5260a8; }
+.card.sold { color: #8c98d8; }
+.was { color: #b5bce0; }
+.b1 { color: #9ff7ae; }
+.nerf { color: #ffb0b0; }
+button:disabled { opacity: 0.55; }
+.d-meta, .b-who .dim, .cd-vs { color: #e1e5fa; }
+.sb { text-shadow: 0 1px 1px #000; }
+.hptxt { text-shadow: 0 1px 0 #000, 0 0 3px #000, 0 0 3px #000; }
+/* contrast fixes from the automated check */
+button.primary { background: linear-gradient(#d6365c, #a92247); border-color: #ff9bb2; }
+.actionbar button.primary { background: linear-gradient(#d6365c, #a92247); }
+.zlabel.zteam { background: linear-gradient(#d6365c, #b82a4c); }
+.sb.hit { background: #c22a46; }
+.sb.nerf { color: #fff; }
+.goldpill { background: linear-gradient(#d6365c, #a92247); }

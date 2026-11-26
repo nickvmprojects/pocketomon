@@ -1,5 +1,5 @@
 // Pocketomon — game data. All numbers are first-pass and tuned by tools/gen.mjs.
-export const VERSION = '0.6';
+export const VERSION = '0.6b';
 
 export const RULES = {
   battleSeconds: 30,       // regular time
@@ -493,6 +493,9 @@ export function trinketBonus(ids) {
 export const BOT_NAMES = ['Ash Tray', 'Misty Window', 'Brock Lee', 'Gary Oakley', 'Professor Elm Street', 'Nurse Jolene', 'Team Rocket Science', 'Lass Vegas', 'Youngster Joey', 'Bug Catcher Bob', 'Hiker Mike', 'Swimmer Sue', 'Picnicker Pam', 'Cool Trainer Kai', 'Ace Ventura', 'Super Nerd Ned', 'Fisher Price', 'Biker Bart', 'Gentleman Jim', 'Beauty Bella', 'Psychic Sam', 'Blackbelt Bo', 'Juggler Jules', 'Rancher Rita', 'Tamer Tina', 'Ranger Rick', 'Burglar Barry', 'Scientist Sid', 'Sailor Sal', 'Camper Cam', 'Dragon Tamer Dot', 'Old Man Pete', 'Twin Tia & Tea', 'Cue Ball Carl', 'Rocker Roxy', 'Medium Maud', 'Channeler Chan', 'Bird Keeper Birdie', 'Artist Arturo', 'Collector Colin'];
 
 export const CHANGELOG = [
+  { v: '0.6b', date: '2026-11-25', notes: [
+    'Easier to read: brighter secondary text, darker backgrounds behind small text, slightly heavier small fonts, and darker reds and pinks behind white text. Every text colour now passes the standard contrast check for its size.',
+  ] },
   { v: '0.6', date: '2026-11-25', notes: [
     'See your buffs: cards and details now show battle-ready stats, including auras, charms, slot trinkets and growth. Buffed numbers glow (green, then bold, then gold, then rainbow), and the details list where each buff comes from. Selecting an aura mon outlines the slots it buffs.',
     'Stat badges under every mon: hit damage and its main effect at a glance.',

@@ -1,7 +1,7 @@
 // Procedural mon art v2: every type has its own body families (2-3 silhouettes each),
 // with per-mon colour shifts, faces and tier flourishes. Stable per mon id.
-import { MON, TYPES } from './data.js?v=0.6';
-import { makeRng, hash } from './rng.js?v=0.6';
+import { MON, TYPES } from './data.js?v=0.6b';
+import { makeRng, hash } from './rng.js?v=0.6b';
 
 const INK = '#1b1424';
 const cache = new Map();

@@ -3,9 +3,9 @@
 import {
   RULES, MON, MONS, TYPE_KEYS, AVATARS, AVATAR, TRINKETS, TRINKET, isBattleTrinket, trinketBonus, TRIGGERS, inZone, trinketPrice,
   teamHp, income, price, sellPerCopy, tierWeights, maxTier, TIER_POWER, LV_POWER, fxValue,
-} from './data.js?v=0.6';
-import { makeRng, hash } from './rng.js?v=0.6';
-import { rateTeam } from './battle.js?v=0.6';
+} from './data.js?v=0.6b';
+import { makeRng, hash } from './rng.js?v=0.6b';
+import { rateTeam } from './battle.js?v=0.6b';
 
 export function rngOf(run) { const r = makeRng(run.rs); return r; }
 function save(run, r) { run.rs = r.state(); }

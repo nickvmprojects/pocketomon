@@ -2,7 +2,7 @@
 // Clock ticks every 0.1s. Each tick: charge timers, mons that reach their cooldown cast in
 // slot order (slot 1 player, slot 1 opponent, slot 2 player, ...), then the battle ends if a
 // team is at 0 HP. Statuses tick once per second. Ties go to side A (the player).
-import { MON, RULES, LV, FX, ECHO_KEYS, fxValue, trinketBonus, TRIGGERS, AURAS, inZone } from './data.js?v=0.6';
+import { MON, RULES, LV, FX, ECHO_KEYS, fxValue, trinketBonus, TRIGGERS, AURAS, inZone } from './data.js?v=0.6b';
 
 const DT = 0.1;
 const TPS = 10; // ticks per second
