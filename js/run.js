@@ -3,9 +3,9 @@
 import {
   RULES, MON, MONS, TYPE_KEYS, AVATARS, AVATAR, TRINKETS, TRINKET, isBattleTrinket, trinketBonus, TRIGGERS, inZone, trinketPrice,
   teamHp, income, price, sellPerCopy, tierWeights, maxTier, TIER_POWER, LV_POWER, fxValue,
-} from './data.js?v=0.5';
-import { makeRng, hash } from './rng.js?v=0.5';
-import { rateTeam } from './battle.js?v=0.5';
+} from './data.js?v=0.6';
+import { makeRng, hash } from './rng.js?v=0.6';
+import { rateTeam } from './battle.js?v=0.6';
 
 export function rngOf(run) { const r = makeRng(run.rs); return r; }
 function save(run, r) { run.rs = r.state(); }
@@ -231,10 +231,10 @@ export function addMon(run, inst, dest) {
     for (const p of parts) slotsOf(run, p.zone)[p.i] = null;
     let merged = mergeInsts(run, [parts[0].m, parts[1].m, inst]);
     slotsOf(run, into.zone)[into.i] = merged;
-    queueTrinket(run, MON[inst.id].tier);
-    (run.celebrate = run.celebrate || []).push({ k: 'merge', id: inst.id, lvl: 2 });
     fireShopTrigger(run, merged, 'levelUp', into);
     const lvl3 = checkL3(run, merged, into);
+    // a merge chain gives ONE reward: same tier for level 2, tier + 1 when it ends at level 3
+    if (!lvl3) { queueTrinket(run, MON[inst.id].tier); (run.celebrate = run.celebrate || []).push({ k: 'merge', id: inst.id, lvl: 2 }); }
     return { ok: true, merged: lvl3 ? 3 : 2, at: lvl3 || into };
   }
   let spot = null;
@@ -256,7 +256,7 @@ function checkL3(run, m, at) {
   slotsOf(run, other.zone)[other.i] = null;
   const l3 = mergeInsts(run, [m, other.m]);
   slotsOf(run, into.zone)[into.i] = l3;
-  queueTrinket(run, MON[m.id].tier);
+  queueTrinket(run, MON[m.id].tier + 1);
   (run.celebrate = run.celebrate || []).push({ k: 'merge', id: m.id, lvl: 3 });
   fireShopTrigger(run, l3, 'levelUp', into);
   return into;
@@ -352,7 +352,7 @@ export function currentTrinketChoice(run) {
     for (const d of [-1, 1, -2, 2, -3, 3, -4, 4]) {
       if (pool.length >= 3) break;
       const t = q.tier + d;
-      if (t >= 1 && t <= 5) pool = pool.concat(r.shuffle(trinketPool(run, t)).filter(x => !pool.includes(x)));
+      if (t >= 1 && t <= 6) pool = pool.concat(r.shuffle(trinketPool(run, t)).filter(x => !pool.includes(x)));
     }
     q.options = pool.slice(0, 3).map(t => t.id);
     save(run, r);

@@ -2,11 +2,11 @@
 // snapshots. Prints balance stats and (with --write) saves js/snapdata.js.
 // usage: node tools/gen.mjs [bots=600] [--write] [--seed=1]
 import { writeFileSync, existsSync, readFileSync } from 'node:fs';
-import { MON, MONS, TYPES, BOT_NAMES, RULES, TRINKET, price } from '../js/data.js?v=0.5';
-import { makeRng } from '../js/rng.js?v=0.5';
-import * as R from '../js/run.js?v=0.5';
-import { simulate } from '../js/battle.js?v=0.5';
-import { makeProfile, botDay } from '../js/bot.js?v=0.5';
+import { MON, MONS, TYPES, BOT_NAMES, RULES, TRINKET, price } from '../js/data.js?v=0.6';
+import { makeRng } from '../js/rng.js?v=0.6';
+import * as R from '../js/run.js?v=0.6';
+import { simulate } from '../js/battle.js?v=0.6';
+import { makeProfile, botDay } from '../js/bot.js?v=0.6';
 
 const args = process.argv.slice(2);
 const N = Number(args.find(a => /^\d+$/.test(a)) || 600);

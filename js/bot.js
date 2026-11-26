@@ -1,7 +1,7 @@
 // Bot players: used to build the snapshot library and for balance simulations.
 // Deliberately imperfect: they like favourite types, reroll a set amount and arrange simply.
-import { MON, TYPES, TIER_POWER, LV_POWER, ECHO_KEYS, RULES, TRINKET, isBattleTrinket, price, TRIGGERS, AURAS, trinketPrice } from './data.js?v=0.5';
-import * as R from './run.js?v=0.5';
+import { MON, TYPES, TIER_POWER, LV_POWER, ECHO_KEYS, RULES, TRINKET, isBattleTrinket, price, TRIGGERS, AURAS, trinketPrice } from './data.js?v=0.6';
+import * as R from './run.js?v=0.6';
 
 const SUPPORT_FRONT = ['rock', 'electric', 'grass', 'psychic', 'ice'];
 

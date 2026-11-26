@@ -1,5 +1,5 @@
 // Pocketomon — game data. All numbers are first-pass and tuned by tools/gen.mjs.
-export const VERSION = '0.5';
+export const VERSION = '0.6';
 
 export const RULES = {
   battleSeconds: 30,       // regular time
@@ -18,7 +18,7 @@ export const RULES = {
 
 export const teamHp = (day) => 200 + day * 100;
 export const income = (day) => Math.min(30 + 10 * day, 90);   // 40, 50, ... capped at 90 from day 6
-// Shop price = 10 x tier, adjusted -5..+5 per mon by how strong it is (COST_ADJ, tuned by tools/gen.mjs)
+// Shop price = 10 x tier, then -5 / 0 / +5 by how strong the mon is (COST_ADJ), so prices end in 0 or 5
 export const price = (def) => 10 * def.tier + (COST_ADJ[def.id] || 0);
 export const sellPerCopy = (def) => Math.floor(price(def) / 2);
 
@@ -215,8 +215,8 @@ export const MONS = [
 export const MON = Object.fromEntries(MONS.map(x => [x.id, x]));
 // Balance knobs written by tools/balance.mjs from simulations:
 // COST_ADJ = price change per mon (-5..+5, stronger archetypes cost more); TUNE = multiplier on all of a mon's numbers.
-export const COST_ADJ = {"emberpup":-2,"kilnkit":-1,"flarebat":5,"pyrrhino":-1,"wickwisp":3,"magmaw":1,"infernodon":-1,"puddlefin":1,"ripplet":3,"tidalon":-3,"krakenling":-3,"rainbeau":-2,"leviathorn":-1,"aquarion":-2,"sproutle":-1,"thornbit":-1,"budgeon":-1,"oakhorn":-1,"lashvine":-4,"petalisk":4,"barkodile":-1,"verdragon":3,"zapling":1,"voltmouse":-2,"sparkoon":-1,"dynamole":-3,"coilbee":1,"stormlion":-3,"teslug":2,"ampharaoh":2,"frostkit":-1,"snowpeck":-1,"glaciub":1,"tuskfrost":1,"shiverling":1,"blizzowl":3,"crystalynx":3,"borealis":3,"pebblet":-1,"cragcub":1,"geodot":5,"quarrion":-3,"spikeshell":5,"monolith":-1,"obsidrake":-1,"titanox":-2,"colossite":1,"sludgit":-2,"stinkbug":3,"toxitoad":-3,"plagueroo":-3,"belladonix":2,"hydraxis":-2,"morbulb":-2,"dozzle":-1,"psyfox":3,"trancey":-2,"cerebrox":1,"mesmeray":2,"oraclam":1,"psyclops":3,"cosmind":4,"spookit":-1,"ghoulpup":2,"wraithorn":-1,"lanternik":1,"soulsipper":-3,"phantomaw":2,"reapurr":-4,"canrat":-1,"rustacean":-3,"dumpsterix":-3,"gearwolf":1,"landfillion":-3,"chirpip":1,"drumbo":-1,"hummingbard":1,"bassloon":-2,"amplifox":-1,"kazooka":1,"maestrich":1,"corallis":3,"thunderam":-4,"fungloom":-3,"venomba":-2,"miasmite":2,"wisplet":5,"binbot":-3,"symphonix":-2};
-export const TUNE = {"cindermite":0.785,"kilnkit":0.936,"wickwisp":0.681,"infernodon":0.864,"puddlefin":0.961,"bubblot":0.919,"mistle":0.938,"tidalon":1.068,"krakenling":1.225,"rainbeau":1.021,"aquarion":0.977,"sproutle":0.975,"budgeon":1.052,"oakhorn":0.837,"lashvine":0.987,"petalisk":0.887,"barkodile":0.92,"zapling":1.077,"coilbee":0.885,"teslug":0.937,"raijumbo":0.884,"ampharaoh":0.666,"frostkit":1.056,"snowpeck":1.01,"glaciub":0.836,"tuskfrost":0.927,"blizzowl":0.93,"crystalynx":0.965,"borealis":0.852,"pebblet":0.718,"geodot":0.814,"monolith":1.034,"obsidrake":1.19,"colossite":1.191,"stinkbug":0.844,"plagueroo":1.018,"hydraxis":1.102,"morbulb":1.047,"mindle":1.018,"psyfox":0.833,"cerebrox":0.898,"mesmeray":0.922,"oraclam":0.827,"psyclops":1.243,"cosmind":0.803,"boolet":1.008,"ghoulpup":1.129,"wraithorn":1.06,"soulsipper":1.138,"phantomaw":0.927,"canrat":1.36,"rustacean":0.8,"dumpsterix":1.195,"magnetick":1.276,"crushbox":1.033,"gearwolf":0.884,"landfillion":1.133,"drumbo":1.113,"bassloon":1.267,"amplifox":0.902,"kazooka":1.04,"banjoar":0.847,"maestrich":0.834,"encorca":1.126,"emberpup":0.767,"sunmoth":1.034,"phoenyx":0.926,"ripplet":0.973,"corallis":0.966,"leviathorn":1.138,"elderoot":0.904,"verdragon":0.8,"voltmouse":0.891,"sparkoon":1.087,"dynamole":0.959,"shiverling":1.077,"glacierex":0.809,"gravelump":1.089,"cragcub":0.937,"spikeshell":0.94,"titanox":1.041,"fungloom":1.007,"miasmite":0.806,"belladonix":1.195,"dozzle":1.074,"trancey":1.05,"sphinxie":0.904,"wisplet":0.879,"spookit":1.075,"binbot":1.082,"recyclops":1.467,"hummingbard":1.045,"symphonix":1.126,"leaflynx":0.944,"flurrfox":1.231,"sludgit":0.877,"toxitoad":0.98,"lanternik":0.938,"trashling":0.978,"magmaw":1.217,"thunderam":0.969,"stormlion":0.76,"quarrion":1.072,"banshriek":1.051,"flarebat":0.888,"thornbit":0.906,"chirpip":0.962,"pyrrhino":1.107,"venomba":1.138,"reapurr":1.025};
+export const COST_ADJ = {"flarebat":5,"wickwisp":5,"ripplet":5,"tidalon":-5,"krakenling":-5,"lashvine":-5,"petalisk":5,"verdragon":5,"dynamole":-5,"stormlion":-5,"blizzowl":5,"crystalynx":5,"borealis":5,"geodot":5,"quarrion":-5,"spikeshell":5,"stinkbug":5,"toxitoad":-5,"plagueroo":-5,"psyfox":5,"psyclops":5,"cosmind":5,"soulsipper":-5,"reapurr":-5,"rustacean":-5,"dumpsterix":-5,"landfillion":-5,"corallis":5,"thunderam":-5,"fungloom":-5,"wisplet":5,"binbot":-5};
+export const TUNE = {"cindermite":0.761,"kilnkit":0.955,"wickwisp":0.722,"infernodon":0.81,"puddlefin":0.9,"bubblot":0.904,"mistle":0.938,"tidalon":1.054,"krakenling":1.214,"rainbeau":1.068,"aquarion":1.167,"sproutle":1.045,"budgeon":1.171,"oakhorn":0.882,"lashvine":0.995,"petalisk":0.948,"barkodile":0.993,"zapling":1.033,"coilbee":0.817,"teslug":0.893,"raijumbo":0.858,"ampharaoh":0.597,"frostkit":1.073,"snowpeck":1.058,"glaciub":0.809,"tuskfrost":0.878,"blizzowl":0.993,"crystalynx":0.993,"borealis":0.899,"pebblet":0.728,"geodot":0.814,"monolith":1.055,"obsidrake":1.24,"colossite":1.153,"stinkbug":0.878,"plagueroo":0.992,"hydraxis":1.307,"morbulb":1.159,"mindle":1.015,"psyfox":0.88,"cerebrox":0.893,"mesmeray":0.901,"oraclam":0.823,"psyclops":1.395,"cosmind":0.85,"boolet":0.994,"ghoulpup":1.064,"wraithorn":1.06,"soulsipper":1.175,"phantomaw":0.919,"canrat":1.407,"rustacean":0.685,"dumpsterix":1.179,"magnetick":1.261,"crushbox":1.023,"gearwolf":0.856,"landfillion":1.303,"drumbo":1.142,"bassloon":1.331,"amplifox":0.875,"kazooka":1.018,"banjoar":0.847,"maestrich":0.829,"encorca":1.122,"emberpup":0.802,"sunmoth":1.003,"phoenyx":0.869,"corallis":1.016,"leviathorn":1.185,"elderoot":0.922,"verdragon":0.832,"voltmouse":0.919,"sparkoon":1.087,"dynamole":0.878,"shiverling":1.082,"glacierex":0.8,"gravelump":1.106,"cragcub":0.91,"spikeshell":0.953,"titanox":1.117,"fungloom":0.964,"miasmite":0.788,"belladonix":1.199,"dozzle":1.15,"trancey":1.125,"sphinxie":0.884,"wisplet":0.851,"spookit":1.126,"binbot":1.019,"recyclops":1.445,"hummingbard":1.025,"symphonix":1.219,"leaflynx":0.982,"flurrfox":1.216,"sludgit":0.936,"toxitoad":0.943,"lanternik":0.925,"trashling":0.961,"magmaw":1.216,"thunderam":0.939,"stormlion":0.72,"quarrion":1.072,"banshriek":1.037,"flarebat":0.874,"thornbit":0.97,"chirpip":0.898,"pyrrhino":1.105,"venomba":1.163,"reapurr":1.091,"ripplet":1.015};
 
 // Effect metadata: icon, label, and how levels scale it.
 export const FX = {
@@ -318,7 +318,7 @@ export const TRIGGERS = {
   drumbo: tg('reroll', { grow: { atk: 0.03 } }),
   elderoot: tg('win', { plus: 6 }),
   ghoulpup: tg('win', { plus: 2 }),
-  cindermite: tg('selfCast', { plus: 0.05 }),
+  cindermite: tg('selfCast', { plus: 0.035 }),
   pyrrhino: tg('selfCast', { plus: 0.15 }),
   lashvine: tg('selfCast', { plus: 0.06 }),
   leaflynx: tg('win', { grow: { pow: 0.04 } }),
@@ -461,6 +461,13 @@ export const TRINKETS = [
   tk('dragonscale', 5, 'Dragon Scale', '🐉', 'Team HP +10% and start with a shield of 25% team HP.', { hp: 10, shield: 25 }),
   tk('elementalorb', 5, 'Elemental Orb', '🌈', 'All type effects +40% (not hits).', { fxp: 40 }),
   tk('goldengoose', 5, 'Golden Goose', '🪿', '+15 gold every day and +10 after every win.', { goldDay: 15, winGold: 10 }),
+  // tier 6: legendary, only from merging a tier 5 mon to level 3
+  tk('worldseed', 6, 'World Seed', '🌳', 'All your mons get +25% ATK and POW.', { all: 25 }),
+  tk('clockwork', 6, 'Clockwork Heart', '⚙️', 'Your team acts 30% faster.', { speed: 30 }),
+  tk('undying', 6, 'Undying Totem', '🗿', 'Once per battle, survive a lethal blow at 1 HP and heal 40% team HP.', { totem: 40 }),
+  tk('mirror', 6, 'Mirror of Echoes', '🪞', 'Every cast of your mons also echoes at 25% power.', { mirror: 25 }),
+  tk('dragonhoard', 6, 'Dragon Hoard', '💰', '+25 gold every day and +15 after every win.', { goldDay: 25, winGold: 15 }),
+  tk('secondsun', 6, 'Second Sun', '☀️', 'Start each battle with a shield of 30% team HP, and the enemy burning.', { shield: 30, sunburn: 4 }),
 ];
 // tier 0 = junk trinkets: no effect, stackable, only from junk-trinket triggers (they still fire "trinket gained")
 for (const [id, name, icon] of [['bottlecap', 'Bottle Cap', '🔘'], ['rubberduck', 'Rubber Duck', '🦆'], ['oldsock', 'Old Sock', '🧦'], ['bentspoon', 'Bent Spoon', '🥄'], ['lostbutton', 'Lost Button', '🪡'], ['banana', 'Banana Peel', '🍌']])
@@ -486,6 +493,15 @@ export function trinketBonus(ids) {
 export const BOT_NAMES = ['Ash Tray', 'Misty Window', 'Brock Lee', 'Gary Oakley', 'Professor Elm Street', 'Nurse Jolene', 'Team Rocket Science', 'Lass Vegas', 'Youngster Joey', 'Bug Catcher Bob', 'Hiker Mike', 'Swimmer Sue', 'Picnicker Pam', 'Cool Trainer Kai', 'Ace Ventura', 'Super Nerd Ned', 'Fisher Price', 'Biker Bart', 'Gentleman Jim', 'Beauty Bella', 'Psychic Sam', 'Blackbelt Bo', 'Juggler Jules', 'Rancher Rita', 'Tamer Tina', 'Ranger Rick', 'Burglar Barry', 'Scientist Sid', 'Sailor Sal', 'Camper Cam', 'Dragon Tamer Dot', 'Old Man Pete', 'Twin Tia & Tea', 'Cue Ball Carl', 'Rocker Roxy', 'Medium Maud', 'Channeler Chan', 'Bird Keeper Birdie', 'Artist Arturo', 'Collector Colin'];
 
 export const CHANGELOG = [
+  { v: '0.6', date: '2026-11-25', notes: [
+    'See your buffs: cards and details now show battle-ready stats, including auras, charms, slot trinkets and growth. Buffed numbers glow (green, then bold, then gold, then rainbow), and the details list where each buff comes from. Selecting an aura mon outlines the slots it buffs.',
+    'Stat badges under every mon: hit damage and its main effect at a glance.',
+    'Battles: tap any mon (yours or theirs) to see its live stats while the fight runs. New ⏸ pause button and a 2× toggle. "Hide" on the result box lets you look at the board after the fight.',
+    'Reaching level 3 now gives ONE trinket pick, one tier higher. Six new legendary tier 6 trinkets for level 3 tier 5 mons.',
+    'All mon prices now end in 0 or 5.',
+    'Fresh look: pixel font, coloured section headers, name and price strips on cards, chunkier buttons, bigger HP bars, trainer portraits in battle.',
+    'Rebalanced.',
+  ] },
   { v: '0.5', date: '2026-11-25', notes: [
     'The shop and event screens now fit on one screen: no scrolling, ever. Cards size themselves to your phone.',
     'Taps only select: tapping a mon shows its details, tapping another just switches. Nothing moves or gets bought by tapping.',

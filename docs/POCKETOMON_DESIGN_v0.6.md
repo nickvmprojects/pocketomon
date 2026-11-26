@@ -1,4 +1,4 @@
-# Pocketomon — design v0.5
+# Pocketomon — design v0.6
 
 Simple asynchronous team auto battler. Players buy mons in a shop, merge copies, and fight one 30 second battle per day against another trainer's same-day snapshot.
 
@@ -73,6 +73,14 @@ Every mon keeps its cooldown cast. 43 mons also have one trigger (`TRIGGERS` in 
 - **Moving is drag-only.** A drag starts after ~20px of movement (touch or mouse, no hold). Valid targets glow; only a release on a valid target acts, anything else cancels. The details sheet keeps Buy (first free slot) and Sell buttons; the old To bench / To team buttons were removed.
 - **Sheet position:** shop items open the sheet over the team area (top), owned mons over the shop area (bottom), so the area you're browsing stays tappable.
 - **Merge-reward trinket pick** is a blocking popup.
+
+## v0.6 changes
+- **Merge rewards:** a merge chain gives exactly one trinket pick: the mon's tier for level 2, **tier + 1** when the chain ends at level 3 (so a level 3 tier 5 mon offers tier 6).
+- **Tier 6 trinkets (legendary):** World Seed (all mons +25% ATK/POW), Clockwork Heart (+30% speed), Undying Totem (once: survive a lethal blow at 1 HP + heal 40%), Mirror of Echoes (every cast also echoes at 25%, never chains), Dragon Hoard (+25 gold/day, +15 per win), Second Sun (start with 30% HP shield and the enemy burning for 4% of its HP).
+- **Prices** = 10 × tier + (−5 | 0 | +5); the balancer only uses those steps and tunes strength through `TUNE`.
+- **Effective stats** (`previewTeam` in battle.js): battle-start ATK/POW/speed per team slot with a list of buff sources (charms, slot trinkets, Coach Kip, World Seed, auras). Shown on cards (stat badges: hit + main effect) and in details as `base → effective`. Highlight classes by ratio to the level baseline: < 1.25 green, < 1.75 bold green, < 2.5 gold glow, ≥ 2.5 rainbow.
+- **Battle UI:** tap a mon to inspect (live cooldown, ramp, team growth, earned damage; the battle keeps running); ⏸ pause on the left, 2× toggle, Skip; result box has "Hide" and a "Show result" button.
+- **Balance:** Psychic expose/weaken decay 1.5 → 1.2 per second; Cindermite per-cast growth 0.05 → 0.035; small TUNE fixes. Type stacks win 44–56% across samples.
 
 ## Events (day 2+)
 Gold (10 + 3 × day), wild mon (free, tier = shop max or one below), mystery egg (one tier above the shop), training (+20% ATK), meditation (+20% POW), trinket (shop's top tier), hot springs (+10% HP), bag of dice (+4 free rerolls), sale (−5 gold per mon today), cloning vat (copy a level 1 mon, day 3+), coin flip (+30 / −10), lucky charm (+1 life).

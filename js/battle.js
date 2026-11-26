@@ -2,24 +2,29 @@
 // Clock ticks every 0.1s. Each tick: charge timers, mons that reach their cooldown cast in
 // slot order (slot 1 player, slot 1 opponent, slot 2 player, ...), then the battle ends if a
 // team is at 0 HP. Statuses tick once per second. Ties go to side A (the player).
-import { MON, RULES, LV, FX, ECHO_KEYS, fxValue, trinketBonus, TRIGGERS, AURAS, inZone } from './data.js?v=0.5';
+import { MON, RULES, LV, FX, ECHO_KEYS, fxValue, trinketBonus, TRIGGERS, AURAS, inZone } from './data.js?v=0.6';
 
 const DT = 0.1;
 const TPS = 10; // ticks per second
 const CAPS = { growth: 150, haste: 60, chill: 50, expose: 60, weaken: 40, scrap: 40, selfgrow: 200 };
-const DECAY = { chill: 3, haste: 3, expose: 1.5, weaken: 1.5 }; // points lost per second
+const DECAY = { chill: 3, haste: 3, expose: 1.2, weaken: 1.2 }; // points lost per second
 
 function makeUnit(inst, side, pos, team) {
   if (!inst) return null;
   const def = MON[inst.id];
   let atk = inst.atk, pow = inst.pow;
   const b = team.bonus;
-  let k = 1 + (b.type[def.type] || 0) / 100;
-  if (pos === 0) k += (b.slot1 || 0) / 100;
-  if (pos === 5) k += (b.slot6 || 0) / 100;
-  if (pos === 0 && team.avatar === 'coach') k += 0.3;
+  // buff sources are tracked so the UI can explain effective stats
+  const src = [];
+  const addSrc = (label, pct) => { if (pct) src.push({ label, atk: pct, pow: pct }); return pct; };
+  let k = 1;
+  k += addSrc(`${def.type[0].toUpperCase() + def.type.slice(1)} Charm`, b.type[def.type] || 0) / 100;
+  if (pos === 0) k += addSrc('Leader Badge (slot 1)', b.slot1 || 0) / 100;
+  if (pos === 5) k += addSrc('Rear Guard (slot 6)', b.slot6 || 0) / 100;
+  if (pos === 0 && team.avatar === 'coach') k += addSrc('Coach Kip (slot 1)', 30) / 100;
+  k += addSrc('World Seed', b.all || 0) / 100;
   atk *= k; pow *= k;
-  return { side, pos, def, lvl: inst.lvl, atk, pow, cd: def.cd, charge: 0, ramp: 0, casts: 0, spd: 1, trig: TRIGGERS[def.id], plus: inst.plus || 0, gain: 0 };
+  return { side, pos, def, lvl: inst.lvl, atk, pow, cd: def.cd, charge: 0, ramp: 0, casts: 0, spd: 1, trig: TRIGGERS[def.id], plus: inst.plus || 0, gain: 0, src };
 }
 
 function makeSide(team, side) {
@@ -39,6 +44,7 @@ function makeSide(team, side) {
     const k = LV.pct[u.lvl];
     for (const o of s.units) if (o && inZone(a.who, u.pos, o.pos)) {
       mods[o.pos].atk += (a.atk || 0) * k; mods[o.pos].pow += (a.pow || 0) * k; mods[o.pos].spd += (a.speed || 0) * k;
+      o.src.push({ label: `${u.def.name} aura`, atk: (a.atk || 0) * k, pow: (a.pow || 0) * k, spd: (a.speed || 0) * k, from: u.pos });
     }
   }
   for (const o of s.units) if (o) { const m = mods[o.pos]; o.atk *= 1 + m.atk / 100; o.pow *= 1 + m.pow / 100; o.spd = 1 + m.spd / 100; o.aura = m; }
@@ -66,6 +72,9 @@ export function simulate(teamA, teamB, opts = {}) {
     if (!pierce && side.shield > 0) { const ab = Math.min(side.shield, a); side.shield -= ab; a -= ab; if (ab > 0) ev({ k: 'absorb', s: side.side, v: ab }); }
     side.hp -= a;
     ev({ k: 'dmg', s: side.side, v: amt, kind });
+    if (side.hp <= 0 && side.bonus.totem && !side.totemUsed) { // Undying Totem
+      side.totemUsed = true; side.hp = 1; heal(side, side.maxHp * side.bonus.totem / 100, true); ev({ k: 'rebirth', s: side.side, totem: true });
+    }
     if (!side.low50 && side.hp > 0 && side.hp < side.maxHp * 0.5) { side.low50 = true; emit(side, 'lowHp', {}); emit(S[1 - side.side], 'foeLow', {}); }
     return amt;
   };
@@ -214,6 +223,7 @@ export function simulate(teamA, teamB, opts = {}) {
         const pct = Math.min(125, val(u, key, fx[key], { prism: 1 }));
         cast(tgt, scale * pct / 100, u, t);
       }
+      if (own.bonus.mirror) cast(u, scale * own.bonus.mirror / 100, u, t); // Mirror of Echoes (never chains)
     }
     emit(own, 'allyCast', { unit: u });
     emit(own, 'selfCast', { unit: u });
@@ -232,6 +242,7 @@ export function simulate(teamA, teamB, opts = {}) {
     }
   }
   for (const side of S) if (side.bonus.shield) addShield(side, side.maxHp * side.bonus.shield / 100);
+  for (const side of S) if (side.bonus.sunburn) S[1 - side.side].burn += S[1 - side.side].maxHp * side.bonus.sunburn / 100; // Second Sun
   if (log) { log.push(frame(0, S, events)); events = []; }
 
   const speed = (side, t) => {
@@ -304,6 +315,7 @@ function frame(t, S, events) {
       hp: x.hp, sh: x.shield, burn: x.burn, poison: x.poison, chill: x.chill, haste: x.haste,
       expose: x.expose, weaken: x.weaken, growth: x.growth, doom: x.doom, doomT: x.doomT, scrap: x.scrap,
       ch: x.units.map(u => u ? Math.max(0, Math.min(1, u.charge / u.cd)) : 0),
+      rp: x.units.map(u => (u ? u.ramp : 0)), pl: x.units.map(u => (u ? u.plus : 0)),
     })),
   };
 }
@@ -318,4 +330,10 @@ export function rateTeam(team) {
   const par = { mons: [null, null, null, null, null, null], maxHp: 1e9, trinkets: [], avatar: null, par: { hit: hp / 24 * 0.75, pierce: hp / 24 * 0.25 } };
   const survive = simulate(team, par).t;
   return { kill, survive, rating: Math.round(survive / kill * 1000) / 1000 };
+}
+
+// Battle-start stats for a team (used by the shop to show effective stats + where buffs come from)
+export function previewTeam(team) {
+  const side = makeSide(team, 0);
+  return side.units.map(u => u && { atk: u.atk, pow: u.pow, spd: u.spd, src: u.src });
 }

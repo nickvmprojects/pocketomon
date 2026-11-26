@@ -34,7 +34,7 @@ for (let pass = 1; pass <= PASSES; pass++) {
   for (const id of Object.keys(tierOf)) {
     const s = st.mon[id]; if (!s || s.n < 40) continue;
     const dev = (s.w / s.n - mean[tierOf[id]]) * 100; // points vs tier mean
-    if (fresh && pass === 1) adj[id] = Math.max(-5, Math.min(5, Math.round(dev / 2)));
+    if (fresh && pass === 1) adj[id] = Math.max(-5, Math.min(5, Math.round(dev / 2 / 5) * 5)); // prices end in 0 or 5
     const target = (adj[id] || 0) * 0.8;
     const err = dev - target;
     spread.push(Math.abs(err));

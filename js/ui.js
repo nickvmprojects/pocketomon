@@ -1,9 +1,9 @@
 // Pocketomon UI: title, events, shop, battle replay, run end. Mobile first, tap to select.
-import * as D from './data.js?v=0.5';
-import * as R from './run.js?v=0.5';
-import { simulate } from './battle.js?v=0.5';
-import { monSvg } from './art.js?v=0.5';
-import { LIBRARY } from './snapdata.js?v=0.5';
+import * as D from './data.js?v=0.6';
+import * as R from './run.js?v=0.6';
+import { simulate, previewTeam } from './battle.js?v=0.6';
+import { monSvg } from './art.js?v=0.6';
+import { LIBRARY } from './snapdata.js?v=0.6';
 
 const { MON, TYPES, FX, RULES } = D;
 const $app = document.getElementById('app');
@@ -34,40 +34,81 @@ function toast(msg) {
 }
 
 // ---------------------------------------------------------------- shared bits
-function moveChips(def, lvl = 1, atk = 1, pow = 1) {
-  const out = [`<span class="chip" title="Hit">💥 ${fmt(D.fxValue('dmg', def.dmg, def, lvl, atk))}</span>`];
+// buff highlight class by ratio effective / base (base = the mon at that level with average rolls)
+const buffCls = (r) => (r < 1.04 ? (r < 0.96 ? 'nerf' : '') : r < 1.25 ? 'b1' : r < 1.75 ? 'b2' : r < 2.5 ? 'b3' : 'b4');
+function numHtml(base, eff, unit = '') {
+  const r = base > 0 ? eff / base : 1, c = buffCls(r);
+  if (!c || c === 'nerf') return `<b class="${c}">${fmt(eff)}${unit}</b>`;
+  return `<span class="was">${fmt(base)}</span>→<b class="${c}">${fmt(eff)}${unit}</b>`;
+}
+function moveChips(def, lvl = 1, atk = 1, pow = 1, plus = 0) {
+  const hitB = D.fxValue('dmg', def.dmg, def, lvl, 1), hitE = D.fxValue('dmg', def.dmg, def, lvl, atk) + plus;
+  const out = [`<span class="chip" title="Hit">💥 ${numHtml(hitB, hitE)}</span>`];
   for (const [k, v] of Object.entries(def.fx)) {
     const meta = FX[k]; if (!meta) continue;
-    let x = D.fxValue(k, v, def, lvl, pow);
-    if (D.ECHO_KEYS.includes(k)) x = Math.min(125, x);
-    out.push(`<span class="chip" title="${meta.label}">${meta.icon} ${meta.label} ${fmt(x)}${meta.unit || ''}</span>`);
+    let x = D.fxValue(k, v, def, lvl, pow), xb = D.fxValue(k, v, def, lvl, 1);
+    if (D.ECHO_KEYS.includes(k)) { x = Math.min(125, x); xb = Math.min(125, xb); }
+    out.push(`<span class="chip" title="${meta.label}">${meta.icon} ${meta.label} ${numHtml(xb, x, meta.unit || '')}</span>`);
   }
   const p = def.pas;
-  if (p.start) for (const [k, v] of Object.entries(p.start)) out.push(`<span class="chip pas">Start: ${FX[k].icon} ${FX[k].label} ${fmt(D.fxValue(k, v, def, lvl, pow))}${FX[k].unit || ''}</span>`);
-  if (p.regen) out.push(`<span class="chip pas">✨ Regen ${fmt(D.fxValue('regen', p.regen, def, lvl, pow))}/s</span>`);
+  if (p.start) for (const [k, v] of Object.entries(p.start)) out.push(`<span class="chip pas">Start: ${FX[k].icon} ${FX[k].label} ${numHtml(D.fxValue(k, v, def, lvl, 1), D.fxValue(k, v, def, lvl, pow), FX[k].unit || '')}</span>`);
+  if (p.regen) out.push(`<span class="chip pas">✨ Regen ${numHtml(D.fxValue('regen', p.regen, def, lvl, 1), D.fxValue('regen', p.regen, def, lvl, pow))}/s</span>`);
   if (p.salvage) out.push(`<span class="chip pas">🪙 +${p.salvage * lvl} gold after battle</span>`);
   if (p.rebirth) out.push(`<span class="chip pas">🪶 Once: heal ${fmt(D.fxValue('rebirth', p.rebirth, def, lvl, pow))}% at &lt;30% HP</span>`);
   return out.join('');
+}
+// effective (battle-start) multipliers for a mon at a location; team slots include auras, charms, slot trinkets
+function effOf(m, zone, i) {
+  const pv = zone === 'team' && ui.prev && ui.prev[i];
+  return pv ? { atk: pv.atk, pow: pv.pow, spd: pv.spd, src: pv.src, plus: m.plus || 0 } : { atk: m.atk || 1, pow: m.pow || 1, spd: 1, src: [], plus: m.plus || 0 };
+}
+// the two numbers shown under a card's art: hit + main effect, coloured by how buffed they are
+function statBadges(m, eff) {
+  const def = MON[m.id], lvl = m.lvl || 1;
+  const hb = D.fxValue('dmg', def.dmg, def, lvl, 1), he = D.fxValue('dmg', def.dmg, def, lvl, eff.atk) + eff.plus;
+  let out = `<span class="sb hit ${buffCls(he / hb)}">${fmt(he)}</span>`;
+  const key = Object.keys(def.fx).find(k => FX[k] && FX[k].scale !== 'pct' && FX[k].scale !== 'sec') || Object.keys(def.fx).find(k => FX[k]);
+  if (key) {
+    let xe = D.fxValue(key, def.fx[key], def, lvl, eff.pow), xb = D.fxValue(key, def.fx[key], def, lvl, 1);
+    out += `<span class="sb fxb ${buffCls(xe / xb)}" style="--bc:${TYPES[def.type].color}">${FX[key].icon}${fmt(xe)}${FX[key].unit === '%' ? '%' : ''}</span>`;
+  }
+  return `<div class="sbadges">${out}</div>`;
 }
 
 const stars = (lvl) => '★'.repeat(lvl) + '<span class="dim">' + '★'.repeat(3 - lvl) + '</span>';
 const rollCls = (x) => x >= 1.1 ? 'good' : x <= 0.9 ? 'bad' : '';
 
 function card(m, o = {}) {
-  if (!m) return `<div class="card empty ${o.sel ? 'sel' : ''} ${o.target ? 'target' : ''}" data-z="${o.zone}" data-i="${o.i}">${o.label ? `<span class="slotno">${o.label}</span>` : ''}</div>`;
+  if (!m) return `<div class="card empty ${o.sel ? 'sel' : ''} ${o.target ? 'target' : ''} ${o.aura ? 'aurahit' : ''}" data-z="${o.zone}" data-i="${o.i}">${o.label ? `<span class="slotno">${o.label}</span>` : ''}</div>`;
   const def = MON[m.id], T = TYPES[def.type];
   const shop = o.price !== undefined;
   const marks = (D.TRIGGERS[m.id] ? '<span title="Has a trigger">🔔</span>' : '') + (D.AURAS[m.id] ? '<span title="Has an aura">✨</span>' : '');
-  return `<div class="card t-${def.type} ${o.sel ? 'sel' : ''} ${o.target ? 'target' : ''} ${o.small ? 'small' : ''}" data-z="${o.zone}" data-i="${o.i}" style="--tc:${T.color};--td:${T.dark}">
-    <div class="c-top"><span class="tierpill t${def.tier}">T${def.tier}</span>${shop ? `<span class="price ${run && run.gold < o.price ? 'no' : ''}">💰${o.price}</span>` : (m.lvl ? `<span class="lv">${stars(m.lvl)}</span>` : '')}</div>
+  const eff = o.zone === 'dex' ? { atk: 1, pow: 1, plus: 0 } : effOf(m, o.zone, o.i);
+  return `<div class="card t-${def.type} ${o.sel ? 'sel' : ''} ${o.target ? 'target' : ''} ${o.small ? 'small' : ''} ${o.aura ? 'aurahit' : ''}" data-z="${o.zone}" data-i="${o.i}" style="--tc:${T.color};--td:${T.dark}">
+    <div class="c-top"><span class="tierpill t${def.tier}">T${def.tier}</span>${m.lvl && !shop ? `<span class="lvtag">LV.${m.lvl}</span>` : ''}</div>
     ${marks ? `<div class="marks">${marks}</div>` : ''}${o.locked ? '<div class="lock">🔒</div>' : ''}
     <div class="art">${monSvg(m.id)}</div>
     ${o.own ? `<div class="own ${o.own.startsWith('⤴') ? 'merge' : ''}">${o.own}</div>` : ''}
-    <div class="nm">${def.name}</div></div>`;
+    ${o.small || o.zone === 'dex' ? '' : statBadges(m, eff)}
+    <div class="nm"><span class="nmt">${def.name}</span>${shop ? `<span class="price ${run && run.gold < o.price ? 'no' : ''}">${o.price}</span>` : ''}</div></div>`;
+}
+// where a mon's stats come from (rolls/growth, flat damage, auras, trinkets)
+function srcLines(m, eff) {
+  const parts = [`<span>🎲 Rolls & growth: ATK ${Math.round((m.atk || 1) * 100)}% · POW ${Math.round((m.pow || 1) * 100)}%</span>`];
+  if (eff.plus) parts.push(`<span class="b1">💪 +${fmt(eff.plus)} hit damage earned</span>`);
+  for (const x of eff.src || []) {
+    const bits = [];
+    if (x.atk) bits.push(`+${Math.round(x.atk)}% ATK`);
+    if (x.pow) bits.push(`+${Math.round(x.pow)}% POW`);
+    if (x.spd) bits.push(`+${Math.round(x.spd)}% speed`);
+    if (bits.length) parts.push(`<span class="b1">${x.label.endsWith('aura') ? '✨' : '🎒'} ${esc(x.label)}: ${bits.join(', ')}</span>`);
+  }
+  return `<div class="srcs">${parts.join('')}</div>`;
 }
 function detail(m, ctx) {
   const def = MON[m.id], T = TYPES[def.type];
   const lvl = m.lvl || 1;
+  const eff = ctx.eff || (ctx.zone === 'dex' ? { atk: 1, pow: 1, spd: 1, src: [], plus: 0 } : effOf(m, ctx.zone, ctx.i));
   let btns = '', note = '';
   if (ctx.zone === 'shop') {
     const price = R.offerPrice(run, def);
@@ -76,7 +117,7 @@ function detail(m, ctx) {
     else if (copies === 1) note = `<div class="note">You own 1 copy. Get 3 to merge into level 2.</div>`;
     btns = `<button class="primary" data-act="buy" ${run.gold < price ? 'disabled' : ''}>Buy 💰${price}</button>
       <button data-act="lock">${ctx.locked ? '🔓 Unlock' : '🔒 Lock for next day'}</button>`;
-  } else if (ctx.zone === 'team' || ctx.zone === 'bench') {
+  } else if ((ctx.zone === 'team' || ctx.zone === 'bench') && !ctx.info) {
     btns = `<button data-act="sell">Sell +💰${R.sellValue(run, m)}</button>`;
     if (lvl < 3) note = `<div class="note dim">${lvl === 1 ? 'Merge 3 copies → level 2.' : 'Merge with another level 2 → level 3.'}</div>`;
   }
@@ -85,9 +126,10 @@ function detail(m, ctx) {
     <div class="d-head"><div class="d-art">${monSvg(m.id)}</div>
       <div><div class="d-name">${def.name} <span class="lvtxt">${ctx.zone === 'dex' ? '' : 'Lv' + lvl}</span></div>
       <div class="d-meta"><span class="typechip" style="background:${T.color}">${T.icon} ${T.name}</span> <span class="tierpill t${def.tier}">Tier ${def.tier}</span> <span>⏱ ${def.cd}s</span></div>
-      ${ctx.zone !== 'dex' ? `<div class="d-meta"><span class="${rollCls(m.atk)}">ATK ${Math.round(m.atk * 100)}%</span> <span class="${rollCls(m.pow)}">POW ${Math.round(m.pow * 100)}%</span> <span class="dim">⚡ ${Math.round(R.monPower({ ...m, lvl }))}</span></div>` : ''}</div></div>
-    <div class="chips">${moveChips(def, lvl, m.atk || 1, m.pow || 1)}</div>
-    ${D.TRIGGERS[m.id] ? `<div class="trigline">🔔 ${esc(D.triggerText(def, lvl, m.pow || 1))}</div>` : ''}
+      ${ctx.zone !== 'dex' ? `<div class="d-meta"><span>ATK <b class="${buffCls(eff.atk)}">${Math.round(eff.atk * 100)}%</b></span> <span>POW <b class="${buffCls(eff.pow)}">${Math.round(eff.pow * 100)}%</b></span>${eff.spd > 1.001 ? ` <span>Speed <b class="${buffCls(eff.spd)}">+${Math.round((eff.spd - 1) * 100)}%</b></span>` : ''}</div>` : ''}</div></div>
+    <div class="chips">${moveChips(def, lvl, eff.atk, eff.pow, eff.plus)}</div>
+    ${ctx.zone !== 'dex' ? srcLines(m, eff) : ''}
+    ${D.TRIGGERS[m.id] ? `<div class="trigline">🔔 ${esc(D.triggerText(def, lvl, eff.pow))}</div>` : ''}
     ${D.AURAS[m.id] ? `<div class="trigline aura">✨ ${esc(D.auraText(def, lvl))}</div>` : ''}
     <div class="flavor">${esc(def.flavor)}</div>${note}
     ${btns ? `<div class="btns">${btns}</div>` : ''}</div>`;
@@ -101,8 +143,8 @@ function trinketCard(o, sel) {
   if (!o || !o.id) return `<div class="card sold tcard">SOLD</div>`;
   const t = D.TRINKET[o.id], price = D.trinketPrice(t);
   return `<div class="card tcard ${sel ? 'sel' : ''}" data-z="tshop" data-i="0">
-    <div class="c-top"><span class="tierpill t${t.tier}">T${t.tier}</span><span class="price ${run.gold < price ? 'no' : ''}">💰${price}</span></div>
-    ${o.locked ? '<div class="lock">🔒</div>' : ''}<div class="ticon">${t.icon}</div><div class="tlabel">TRINKET</div><div class="nm">${esc(t.name)}</div></div>`;
+    <div class="c-top"><span class="tierpill t${t.tier}">T${t.tier}</span></div>
+    ${o.locked ? '<div class="lock">🔒</div>' : ''}<div class="ticon">${t.icon}</div><div class="tlabel">TRINKET</div><div class="nm"><span class="nmt">${esc(t.name)}</span><span class="price ${run.gold < price ? 'no' : ''}">${price}</span></div></div>`;
 }
 function trinketSheet(o) {
   const t = D.TRINKET[o.id], price = D.trinketPrice(t);
@@ -120,7 +162,7 @@ function topbar() {
   const MAXT = 7;
   return `<header class="topbar">
     <div class="tb-l"><span class="day">Day ${run.day}</span>${run.mode === 'ranked' ? `<span class="mode" style="color:${rk.color}">${rk.icon}</span>` : ''}</div>
-    <div class="tb-r"><span title="Gold">💰${run.gold}</span><span title="Lives">❤️${run.lives}</span><span title="Wins">🏆${run.wins}/${RULES.winsToChampion}</span>
+    <div class="tb-r"><span title="Lives">❤️${run.lives}</span><span class="goldpill" title="Gold">$${run.gold}</span><span title="Wins">🏆${run.wins}/${RULES.winsToChampion}</span>
     <button class="icon" data-act="menu">☰</button></div></header>
     <div class="infobar"><span>⚡${R.runPower(run)}</span><span>🩷${R.maxHpFor(run.day, run.hpBonus, run.avatar, run.trinkets)}</span>
       <span class="tys">${run.types.map(t => `<i style="background:${TYPES[t].color}">${TYPES[t].icon}</i>`).join('')}</span>
@@ -131,14 +173,22 @@ function teamRows(opts = {}) {
   const tgt = opts.target;
   const isSel = (z, i) => ui.sel && ui.sel.zone === z && ui.sel.i === i;
   const tOk = (m) => tgt && R.validTarget(run, tgt, m);
-  return `<div class="zlabel">Team <span>front row casts first</span></div>
-    <div class="zone team">${run.team.map((m, i) => card(m, { zone: 'team', i, sel: isSel('team', i), label: i < 3 ? `Front ${i + 1}` : `Back ${i + 1}`, target: tOk(m) })).join('')}</div>
-    <div class="zlabel">Bench <span>doesn't fight</span></div>
+  // selecting an aura mon on the team outlines the slots it buffs
+  const sm = ui.sel && ui.sel.zone === 'team' && run.team[ui.sel.i];
+  const au = sm && D.AURAS[sm.id];
+  const hit = (i) => au && D.inZone(au.who, ui.sel.i, i);
+  return `<div class="zlabel zteam">My team <span>front row casts first</span></div>
+    <div class="zone team">${run.team.map((m, i) => card(m, { zone: 'team', i, sel: isSel('team', i), label: i < 3 ? `Front ${i + 1}` : `Back ${i + 1}`, target: tOk(m), aura: hit(i) })).join('')}</div>
+    <div class="zlabel zbench">Bench <span>doesn't fight</span></div>
     <div class="zone bench" style="--n:${run.bench.length}">${run.bench.map((m, i) => card(m, { zone: 'bench', i, sel: isSel('bench', i), target: tOk(m), small: true })).join('')}</div>`;
 }
 
 // ---------------------------------------------------------------- screens
+function computePreview() {
+  ui.prev = run && run.team ? previewTeam(R.battleTeamFromSnap({ day: run.day, hpBonus: run.hpBonus, avatar: run.avatar, trinkets: run.trinkets.filter(t => D.isBattleTrinket(t)), team: run.team })) : null;
+}
 function render() {
+  computePreview();
   if (ui.battle) return; // battle owns the screen
   if (ui.screen === 'dex') return renderDex();
   if (ui.screen === 'title' || !run) return renderTitle();
@@ -248,7 +298,7 @@ function renderEvent() {
         ${blocked ? `<div class="c-x">${blocked}</div>` : ''}</button>`;
     }).join('')}</div>
     ${run.avatar ? `<div class="evteam">${teamRows({ target: pend && pend.needsTarget ? pend : null })}</div>` : `<div class="sub center">Today's shop types: ${run.types.map(t => TYPES[t].icon + ' ' + TYPES[t].name).join(' · ')}. Trainer perks last the whole run.</div>`}
-  </main>${selM && !pend ? detail(selM, { zone: 'info', sheet: true }) : ''}`;
+  </main>${selM && !pend ? detail(selM, { zone: isSel.zone, i: isSel.i, sheet: true, info: true }) : ''}`;
 }
 
 function renderShop() {
@@ -257,7 +307,7 @@ function renderShop() {
   if (sel) {
     if (sel.zone === 'tshop') { if (!(run.tshop && run.tshop.id)) ui.sel = null; }
     else if (sel.zone === 'shop') { const o = run.shop[sel.i]; if (o && o.mon) { selM = o.mon; ctx = { zone: 'shop', locked: o.locked, sheet: true }; } }
-    else { selM = (sel.zone === 'team' ? run.team : run.bench)[sel.i]; if (selM) ctx = { zone: sel.zone, sheet: true }; }
+    else { selM = (sel.zone === 'team' ? run.team : run.bench)[sel.i]; if (selM) ctx = { zone: sel.zone, i: sel.i, sheet: true }; }
     if (!selM && ui.sel && ui.sel.zone !== 'tshop') ui.sel = null;
   }
   const tsel = ui.sel && ui.sel.zone === 'tshop';
@@ -273,14 +323,14 @@ function renderShop() {
   const cols = nOff > 6 ? 4 : 3;
   $app.innerHTML = `${topbar()}<main class="fit shopfit" data-act-bg="1">
     ${teamRows()}
-    <div class="zlabel">Shop <span>tiers up to ${D.maxTier(run.day)}${run.sale ? ' · <b class="good">SALE −5</b>' : ''}</span></div>
+    <div class="zlabel zshop">Shop <span>tiers up to ${D.maxTier(run.day)}${run.sale ? ' · <b class="good">SALE −5</b>' : ''}</span></div>
     <div class="zone shop" style="--c:${cols};--r:${Math.ceil(nOff / cols)}">${run.shop.map((o, i) => o.mon ? card(o.mon, {
       zone: 'shop', i, price: R.offerPrice(run, MON[o.mon.id]), locked: o.locked, sel: sel && sel.zone === 'shop' && sel.i === i, own: ownTag(o.mon.id),
     }) : `<div class="card sold">SOLD</div>`).join('')}${trinketCard(run.tshop, sel && sel.zone === 'tshop')}</div>
   </main>${tpanel}
   ${selM ? detail(selM, ctx) : tsel ? trinketSheet(run.tshop) : ''}
   <footer class="actionbar" id="actionbar">
-    <button data-act="reroll" ${run.gold < rc ? 'disabled' : ''}>🎲 Reroll ${rc ? '💰' + rc : `free (${freeR})`}</button>
+    <button data-act="reroll" ${run.gold < rc ? 'disabled' : ''}>🎲 ${rc ? 'Reroll $' + rc : `Free (${freeR})`}</button>
     <button class="primary" data-act="battle" ${tq ? 'disabled' : ''}>⚔️ Battle!</button>
   </footer>`;
 }
@@ -327,7 +377,9 @@ function helpHtml() {
   <p><b>Team grid</b>: slots 1-3 are the front row and cast first; 4-6 are the back row. "Behind" means the slot directly behind; "adjacent" means left, right, front or behind (no diagonals).</p>
   <p><b>🔔 Triggers</b>: some mons react to things (being bought or sold, levelling up, trinkets, rerolls, wins, allies casting, low HP, sudden death...). A mon is never triggered by a copy of itself, and fires at most once per chain. <b>✨ Auras</b> constantly buff nearby (or far) allies.</p>
   <p><b>⚡ Power</b> is just the sum of your mons' numbers, for fun. It isn't how strong your team really is: Ranked uses a hidden rating.</p>
-  <p><b>Merge rewards</b>: every merge lets you pick 1 of 3 <b>trinkets</b> of the merged mon's tier (tier 1 mon → tier 1 trinkets, up to tier 5). Trinkets last the whole run.</p>
+  <p><b>Buffs</b>: numbers on cards and in the details are what the mon will have when the battle starts (auras, charms, slot trinkets and growth included). The more a number is buffed, the brighter it glows.</p>
+  <p><b>In battle</b>: tap any mon to see its live stats, ⏸ pauses, 2× speeds up. After the fight, "Hide" lets you inspect the board.</p>
+  <p><b>Merge rewards</b>: every merge lets you pick 1 of 3 <b>trinkets</b> of the merged mon's tier. Reaching level 3 gives a single pick one tier higher, up to legendary tier 6. Trinkets last the whole run.</p>
   <p><b>Prices</b>: a mon costs about 10 × its tier, ±5 depending on how strong it is. Selling refunds half per copy.</p>
   <p><b>Ranked</b>: opponents are picked to match your team's hidden strength (a bit above it at higher ranks). Your rank moves when the run ends: <b>6+ wins → rank up</b>, <b>5 wins → rank holds</b>, <b>under 5 → rank down</b>. Ranks: ${D.RANKS.map(r => r.icon + ' ' + r.name).join(' → ')}.</p>
   <h3>Types</h3>${D.TYPE_KEYS.map(k => `<p><b>${TYPES[k].icon} ${TYPES[k].name} (${TYPES[k].mech})</b>: ${TYPES[k].blurb}</p>`).join('')}
@@ -425,7 +477,11 @@ const actions = {
       <div class="btns"><button data-act="closemodal">Not yet</button><button class="primary" data-act="gobattle">Fight!</button></div>`, true);
   },
   gobattle() { closeModal(); startBattle(); },
-  speed(el) { prof.speed = Number(el.dataset.s); saveProf(); if (ui.battle) { ui.battle.speed = prof.speed; markSpeed(); } },
+  speed2() { prof.speed = prof.speed === 2 ? 1 : 2; saveProf(); if (ui.battle) { ui.battle.speed = prof.speed; markSpeed(); } },
+  pause() { const b = ui.battle; if (!b || b.done) return; b.paused = !b.paused; const el = $('pausebtn'); if (el) { el.textContent = b.paused ? '▶' : '⏸'; el.classList.toggle('on', b.paused); } },
+  hideresult() { $('bresult').classList.add('hidden'); $('bshow').classList.remove('hidden'); },
+  showresult() { if (ui.battle) { ui.battle.insp = null; renderInsp(); } $('bshow').classList.add('hidden'); $('bresult').classList.remove('hidden'); },
+  bclose() { if (ui.battle) { ui.battle.insp = null; renderInsp(); } },
   skip() { if (ui.battle) skipBattle(); },
   afterbattle() { ui.battle = null; ui.sel = null; render(); },
 };
@@ -573,6 +629,29 @@ document.addEventListener('mousemove', (e) => pointMove(e, e.clientX, e.clientY)
 document.addEventListener('mouseup', (e) => pointUp(e.clientX, e.clientY));
 document.addEventListener('contextmenu', (e) => { if (e.target.closest && e.target.closest('.card[data-z]')) e.preventDefault(); });
 
+// ---------------------------------------------------------------- battle inspect (the battle keeps running)
+function renderInsp(liveOnly) {
+  const b = ui.battle, el = $('binsp'); if (!b || !el) return;
+  document.querySelectorAll('.bmon.insp').forEach(x => x.classList.remove('insp'));
+  if (!b.insp) { el.innerHTML = ''; return; }
+  const { s, p } = b.insp;
+  const snap = s === 0 ? b.me : b.opp, m = snap.team[p], f = b.frame, st = f.s[s];
+  const bm = $(`bm${s}${p}`); if (bm) bm.classList.add('insp');
+  const pv = b.prev[s][p];
+  const live = `<div class="live"><span>⏱ ${Math.round(st.ch[p] * 100)}%</span>${st.rp && st.rp[p] ? `<span class="b2">💪 Ramp +${Math.round(st.rp[p])}%</span>` : ''}${st.growth > 0.5 ? `<span class="b1">🌿 Team +${Math.round(st.growth)}%</span>` : ''}${st.pl && st.pl[p] ? `<span class="b1">+${fmt(st.pl[p])} hit dmg</span>` : ''}</div>`;
+  if (liveOnly && el.querySelector('.live')) { el.querySelector('.live').outerHTML = live; return; }
+  el.innerHTML = detail(m, { zone: 'battle', sheet: true, eff: { atk: pv.atk, pow: pv.pow, spd: pv.spd, src: pv.src, plus: m.plus || 0 }, side: s })
+    .replace('<button class="sheetx" data-act="deselect">✕</button>', `<button class="sheetx" data-act="bclose">✕</button><div class="whose ${s ? 'bad' : 'good'}">${s ? 'Opponent' : 'Your mon'}</div>`)
+    .replace('<div class="flavor">', live + '<div class="flavor">');
+}
+document.addEventListener('click', (e) => {
+  const bm = e.target.closest && e.target.closest('.bmon[data-bs]');
+  if (!bm || !ui.battle) return;
+  const s = Number(bm.dataset.bs), p = Number(bm.dataset.bp), b = ui.battle;
+  b.insp = b.insp && b.insp.s === s && b.insp.p === p ? null : { s, p };
+  renderInsp();
+});
+
 // ---------------------------------------------------------------- battle
 function startBattle() {
   const opp = R.pickOpponent(run, LIBRARY, prof.rank);
@@ -583,7 +662,9 @@ function startBattle() {
   const sum = R.finishBattle(run, won, opp, res.gains[0]);
   if (run.phase === 'over') finishRunStats();
   saveRun(); saveProf();
-  ui.battle = { opp, me, res, sum, day: daysBefore, pt: 0, fi: 0, speed: prof.speed, done: false, last: 0, live: 0 };
+  if (prof.speed !== 1 && prof.speed !== 2) prof.speed = 2;
+  ui.battle = { opp, me, res, sum, day: daysBefore, pt: 0, fi: 0, speed: prof.speed, done: false, last: 0, live: 0, insp: null, paused: false,
+    prev: [previewTeam(R.battleTeamFromSnap(me)), previewTeam(R.battleTeamFromSnap(opp))], frame: res.log[0] };
   buildBattle();
   requestAnimationFrame(stepBattle);
 }
@@ -591,12 +672,12 @@ function startBattle() {
 function bSide(snap, side, title) {
   const isOpp = side === 1;
   const av = snap.avatar ? D.AVATAR[snap.avatar] : null;
-  const head = `<div class="b-head">${av ? av.face : '🙂'} <b>${esc(title)}</b> <span class="dim">${isOpp ? `${snap.wins}W-${snap.losses}L · ` : ''}⚡${snap.power}</span>
-    ${snap.trinkets.map(t => D.TRINKET[t].icon).join('')}</div>`;
-  const hp = `<div class="hpwrap" id="hp${side}"><div class="hpbar"><div class="hpfill"></div><div class="shfill"></div></div><div class="hptxt"></div></div>`;
+  const head = `<div class="b-head"><div class="portrait">${av ? av.face : '🙂'}</div><div class="b-who"><b>${esc(title)}</b>
+    <span class="dim">${isOpp ? `${snap.wins}W-${snap.losses}L · ` : ''}⚡${snap.power} ${snap.trinkets.map(t => D.TRINKET[t].icon).join('')}</span></div></div>`;
+  const hp = `<div class="hpwrap" id="hp${side}"><div class="hplabel">HP</div><div class="hpbar"><div class="hpfill"></div><div class="shfill"></div></div><div class="hptxt"></div></div>`;
   const chips = `<div class="schips" id="sc${side}"></div>`;
-  const mons = `<div class="brow">${snap.team.map((m, i) => m ? `<div class="bmon t-${MON[m.id].type}" id="bm${side}${i}" style="--tc:${TYPES[MON[m.id].type].color}">
-      <span class="slot">${i + 1}</span><div class="art">${monSvg(m.id)}</div><div class="blv">${stars(m.lvl)}</div><div class="cd"><div></div></div></div>` : `<div class="bmon none"></div>`).join('')}</div>`;
+  const mons = `<div class="brow">${snap.team.map((m, i) => m ? `<div class="bmon t-${MON[m.id].type}" id="bm${side}${i}" data-bs="${side}" data-bp="${i}" style="--tc:${TYPES[MON[m.id].type].color}">
+      <span class="lvtag">LV.${m.lvl}</span><div class="art">${monSvg(m.id)}</div><div class="cd"><div></div></div></div>` : `<div class="bmon none"></div>`).join('')}</div>`;
   return `<div class="bside ${isOpp ? 'opp' : 'me'}">${isOpp ? head + hp + chips + mons : mons + chips + hp + head}</div>`;
 }
 
@@ -607,8 +688,9 @@ function buildBattle() {
     ${bSide(b.opp, 1, b.opp.name)}
     <div class="b-mid"><div class="timer" id="timer">30.0</div><div class="banner" id="banner"></div></div>
     ${bSide(b.me, 0, 'You')}
-    <div class="b-ctl">${[1, 2, 4].map(s => `<button class="spd" data-act="speed" data-s="${s}">${s}×</button>`).join('')}<button data-act="skip">Skip ⏭</button></div>
-    <div id="fxlayer"></div><div id="bresult" class="hidden"></div>
+    <div class="b-ctl"><button id="pausebtn" class="pausebtn" data-act="pause">⏸</button><button class="spd" id="spd2" data-act="speed2">2×</button><button data-act="skip">Skip ⏭</button></div>
+    <div id="fxlayer"></div><div id="binsp"></div><div id="bresult" class="hidden"></div>
+    <button id="bshow" class="primary bshow hidden" data-act="showresult">Show result</button>
     <div class="countdown" id="countdown"><div class="cd-vs">Day ${b.day} · vs</div>
       <div class="cd-opp">${b.opp.avatar ? D.AVATAR[b.opp.avatar].face + ' ' : ''}${esc(b.opp.name)}</div>
       <div class="cd-vs">${b.opp.avatar ? esc(D.AVATAR[b.opp.avatar].name) + ' · ' : ''}⚡ ${b.opp.power}</div>
@@ -618,7 +700,7 @@ function buildBattle() {
   applyState(b.res.log[0]);
   handleEvents(b.res.log[0].ev);
 }
-function markSpeed() { document.querySelectorAll('.spd').forEach(x => x.classList.toggle('sel', Number(x.dataset.s) === ui.battle.speed)); }
+function markSpeed() { const el = $('spd2'); if (el) el.classList.toggle('sel', ui.battle.speed === 2); }
 
 function stepBattle(ts) {
   const b = ui.battle;
@@ -634,6 +716,7 @@ function stepBattle(ts) {
     if (b.cd <= -0.6) { const c = $('countdown'); if (c) c.remove(); }
     if (b.cd > 0) { requestAnimationFrame(stepBattle); return; }
   }
+  if (b.paused) { requestAnimationFrame(stepBattle); return; }
   b.pt += dtReal * b.speed;
   const log = b.res.log;
   let lastF = null;
@@ -656,6 +739,8 @@ function skipBattle() {
 const $ = (id) => document.getElementById(id);
 function applyState(f) {
   const b = ui.battle;
+  b.frame = f;
+  if (b.insp && (!b.inspT || performance.now() - b.inspT > 250)) { b.inspT = performance.now(); renderInsp(true); }
   const left = Math.max(0, RULES.battleSeconds - f.t);
   $('timer').textContent = f.t > RULES.battleSeconds ? `+${(f.t - RULES.battleSeconds).toFixed(1)}` : left.toFixed(1);
   $('timer').classList.toggle('sd', f.t > RULES.battleSeconds);
@@ -743,6 +828,7 @@ function handleEvents(evs) {
 
 function showResult() {
   const b = ui.battle;
+  b.insp = null; renderInsp(); // close any open details so the result buttons are reachable
   const won = b.res.winner === 0, s = b.sum;
   const tie = b.res.hp[0] <= 0 && b.res.hp[1] <= 0;
   const over = run.phase === 'over';
@@ -755,6 +841,7 @@ function showResult() {
     ${s.grew ? `<div class="sub">${esc(s.grew)}</div>` : ''}
     ${s.salvage ? `<div>🪙 Salvage +${s.salvage} gold</div>` : ''}${s.egg ? `<div>🥚 Trinkets +${s.egg} gold for the win</div>` : ''}
     <div class="sub">🏆 ${run.wins}/${RULES.winsToChampion} · ❤️ ${run.lives}</div>
+    <button class="hidebtn" data-act="hideresult">👁 Hide to inspect the battle</button>
     <button class="primary big" data-act="afterbattle">${over ? (run.result === 'champion' ? 'Claim the title 🏆' : 'See run summary') : `Day ${run.day} →`}</button></div>`;
   el.classList.remove('hidden');
 }
