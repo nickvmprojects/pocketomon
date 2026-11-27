@@ -4,7 +4,7 @@
 // team is at 0 HP. Statuses tick once per second. Ties go to side A (the player).
 // v0.7: dimension mechanics (Ki, Alignment, tags, Assimilate, Scrap, Pressure, Sleep, Tempo) and
 // per-being damage/support tracking for the battle report.
-import { MON, TYPES, RULES, LV, ECHO_KEYS, fxValue, trinketBonus, TRIGGERS, AURAS, inZone } from './data.js?v=0.7.5';
+import { MON, TYPES, RULES, LV, ECHO_KEYS, fxValue, trinketBonus, TRIGGERS, AURAS, inZone } from './data.js?v=0.7.6';
 
 const DT = 0.1;
 const TPS = 10; // ticks per second
@@ -12,7 +12,9 @@ const CAPS = { growth: 150, haste: 60, chill: 50, expose: 60, weaken: 40, selfgr
 const DECAY = { chill: 3, haste: 3, expose: 1.2, weaken: 1.2 }; // points lost per second
 const LINGER = ['chill', 'expose', 'weaken']; // debuffs Lunara makes fade slower
 const KI_MAX = 5, TRANS_T = 6, SLEEP_T = 2, SCRAP_HIT = 0.5;
-const hasTag = (u, tag) => !!(u && u.def.x.tags && u.def.x.tags.includes(tag));
+const hasTag = (u, tag) => !!(u && ((u.def.x.tags && u.def.x.tags.includes(tag)) || (u.chimera && (tag === 'hunter' || tag === 'giant' || tag === 'archer'))));
+// grid: slots 0-2 front, 3-5 back; diagonal neighbours (for the Star Chart relic)
+const diag = (a, b) => Math.abs((a % 3) - (b % 3)) === 1 && Math.floor(a / 3) !== Math.floor(b / 3);
 
 function makeUnit(inst, side, pos, team) {
   if (!inst) return null;
@@ -23,15 +25,13 @@ function makeUnit(inst, side, pos, team) {
   const src = [];
   const addSrc = (label, pct) => { if (pct) src.push({ label, atk: pct, pow: pct }); return pct; };
   let k = 1;
-  k += addSrc(`${TYPES[def.type].name} Charm`, b.type[def.type] || 0) / 100;
   if (pos === 0) k += addSrc('Leader Badge (slot 1)', b.slot1 || 0) / 100;
   if (pos === 5) k += addSrc('Rear Guard (slot 6)', b.slot6 || 0) / 100;
   if (pos === 0 && team.avatar === 'coach') k += addSrc('Coach Kip (slot 1)', 30) / 100;
-  k += addSrc('World Seed', b.all || 0) / 100;
   atk *= k; pow *= k;
   return {
     side, pos, def, lvl: inst.lvl, atk, pow, cd: def.cd, charge: 0, ramp: 0, casts: 0, spd: 1, trig: TRIGGERS[def.id], plus: inst.plus || 0, gain: 0, src,
-    ki: 0, trans: 0, trained: 0, oc: 0, seen: 0, dealt: 0, support: 0,
+    ki: 0, trans: 0, trained: 0, oc: 0, seen: 0, dealt: 0, support: 0, chimera: pos === 0 && !!b.chimera,
   };
 }
 
@@ -48,6 +48,17 @@ function makeSide(team, side) {
   for (let i = 0; i < 6; i++) s.units.push(makeUnit(team.mons[i], side, i, s));
   const U = s.units.filter(Boolean);
   const has = (key) => U.filter(u => u.def.pas[key]);
+  const B = s.bonus;
+  // v0.7.6 trinkets that change the trinket count: Rainbow Badge (dimensions), Hall of Fame (level 4+ beings)
+  if (B.rainbow) s.ntrink += B.rainbow * new Set(U.map(u => u.def.type)).size;
+  if (B.fame) s.ntrink += B.fame * U.filter(u => u.lvl >= 4).length;
+  s.kiMax = Math.max(3, KI_MAX - (B.r_martial || 0)); s.transPlus = 3 * (B.r_martial || 0);
+  s.dreamK = 1 + 0.5 * (B.r_dream || 0);
+  s.metro = B.r_clock ? Math.max(3, 6 - B.r_clock) : 0;
+  s.giantK = 1 + (B.r_giants || 0);
+  // Twin Fates: copies of the same being on the team echo each other; Paragon: highest level casts twice
+  if (B.twin) for (const u of U) u.twins = U.filter(o => o !== u && o.def.id === u.def.id);
+  if (B.paragon && U.length) { const top = U.reduce((a, o) => (o.lvl > a.lvl ? o : a)); top.paragon = true; }
   // team-wide passives
   s.shieldCapPct = Math.max(RULES.shieldCap * 100, ...has('shieldCap').map(u => u.def.pas.shieldCap));
   s.ohFull = has('overheal').length > 0;
@@ -68,20 +79,22 @@ function makeSide(team, side) {
     o.src.push({ label, atk, pow, spd, from });
   };
   // Zodiac alignment: adjacent beings of the same element (Virgo matches any)
-  const elOf = (u) => u && u.def.type === 'zodiac' && u.def.x.el;
+  const elOf = (u) => u && (u.chimera ? 'all' : u.def.type === 'zodiac' && u.def.x.el);
+  const near = (a, b) => inZone('adjacent', a, b) || (B.r_zodiac && diag(a, b));
+  const alignK = 20 + 10 * (B.r_zodiac || 0);
   for (const u of U) {
     const e = elOf(u); if (!e) continue;
-    for (const o of U) if (o.pos > u.pos && inZone('adjacent', u.pos, o.pos)) {
+    for (const o of U) if (o.pos > u.pos && near(u.pos, o.pos)) {
       const f = elOf(o); if (f && (e === f || e === 'all' || f === 'all')) s.alignPairs++;
     }
-    if (U.some(o => o !== u && inZone('adjacent', u.pos, o.pos) && elOf(o) && (elOf(o) === e || elOf(o) === 'all' || e === 'all'))) push(u, 'Aligned', 20, 20, 0);
+    if (U.some(o => o !== u && near(u.pos, o.pos) && elOf(o) && (elOf(o) === e || elOf(o) === 'all' || e === 'all'))) push(u, 'Aligned', alignK, alignK, 0);
   }
   // ongoing positional auras (computed from base stats so auras don't feed each other)
   for (const u of U) {
     const a = AURAS[u.def.id]; if (!a) continue;
     const k = LV.pct[u.lvl];
     for (const o of U) if (inZone(a.who, u.pos, o.pos) && (!a.tag || hasTag(o, a.tag))) {
-      const m = (v) => (v || 0) * k * (v > 0 ? x2 : 1);
+      const m = (v) => (v || 0) * k * (v > 0 ? x2 : Math.pow(0.5, B.r_necro || 0)); // Kill Switch halves Assimilate
       push(o, `${u.def.name} ${a.atk < 0 ? 'Assimilate' : 'aura'}`, m(a.atk), m(a.pow), m(a.speed), u.pos);
     }
   }
@@ -92,8 +105,8 @@ function makeSide(team, side) {
     if (v) push(u, `${u.def.name} absorbs ${n} allies`, v, v, 0);
   }
   for (const o of U) { const m = mods[o.pos]; o.atk *= Math.max(0, 1 + m.atk / 100); o.pow *= Math.max(0, 1 + m.pow / 100); o.spd = 1 + m.spd / 100; o.aura = m; }
-  s.prism = 1 + (s.bonus.fxp || 0) / 100;
-  s.whet = 1 + (s.bonus.dmg || 0) / 100;
+  s.prism = 1;
+  s.whet = 1;
   s.wind = s.bonus.wind || 0; s.windUsed = false;
   return s;
 }
@@ -128,7 +141,11 @@ export function simulate(teamA, teamB, opts = {}) {
     if (side.hp <= 0 && side.bonus.totem && !side.totemUsed) { // Undying Totem
       side.totemUsed = true; side.hp = 1; heal(side, side.maxHp * side.bonus.totem / 100, true); ev({ k: 'rebirth', s: side.side, totem: true });
     }
-    if (!side.low50 && side.hp > 0 && side.hp < side.maxHp * 0.5) { side.low50 = true; emit(side, 'lowHp', {}); emit(S[1 - side.side], 'foeLow', {}); }
+    if (!side.low50 && side.hp > 0 && side.hp < side.maxHp * 0.5) {
+      side.low50 = true;
+      if (side.bonus.turn) { for (const o of side.units) if (o) o.charge = Math.max(o.charge, o.cd); ev({ k: 'fx', fx: 'reset', s: side.side }); } // Time Turner
+      emit(side, 'lowHp', {}); emit(S[1 - side.side], 'foeLow', {});
+    }
     return amt;
   };
   // ---- triggers: each being fires at most once per chain, never from a copy of itself
@@ -192,8 +209,8 @@ export function simulate(teamA, teamB, opts = {}) {
   const addKi = (side, o, n) => {
     if (!o || n <= 0) return;
     o.ki += n; side.kiGained += n;
-    while (o.ki >= KI_MAX) {
-      o.ki -= KI_MAX; o.trans = TRANS_T * (side.kiLong ? 2 : 1);
+    while (o.ki >= side.kiMax) {
+      o.ki -= side.kiMax; o.trans = TRANS_T * (side.kiLong ? 2 : 1) + side.transPlus;
       if (side.train) o.trained += side.train / 100;
       ev({ k: 'fx', fx: 'transform', s: side.side, pos: o.pos });
     }
@@ -257,17 +274,17 @@ export function simulate(teamA, teamB, opts = {}) {
       }
       case 'freeze': {
         const t = foe.units[u.pos] || foe.units.find(Boolean);
-        if (sleep(foe, t, v)) ev({ k: 'fx', fx: 'freeze', s: foe.side, pos: t.pos, v });
+        if (sleep(foe, t, v * own.dreamK)) ev({ k: 'fx', fx: 'freeze', s: foe.side, pos: t.pos, v });
         break;
       }
       case 'freezeTop': {
         let t = null;
         for (const o of foe.units) if (o && !o.def.x.immune && (!t || o.charge / o.cd > t.charge / t.cd)) t = o;
-        if (sleep(foe, t, v)) ev({ k: 'fx', fx: 'freeze', s: foe.side, pos: t.pos, v });
+        if (sleep(foe, t, v * own.dreamK)) ev({ k: 'fx', fx: 'freeze', s: foe.side, pos: t.pos, v });
         break;
       }
       case 'freezeAll':
-        for (const o of foe.units) sleep(foe, o, v);
+        for (const o of foe.units) sleep(foe, o, v * own.dreamK);
         ev({ k: 'fx', fx: 'freeze', s: foe.side, v }); break;
       case 'dreamHeal': if (dealt > 0 && foe.sleepT > 0) heal(own, dealt * v / 100, true); break;
       default: break; // damage modifiers and echo/copy/volley keys are handled in cast
@@ -289,7 +306,8 @@ export function simulate(teamA, teamB, opts = {}) {
     // Ki transformation and Hoshi training boost both hits and effects
     const form = (u.trans > 0 ? 1.5 : 1) * (1 + u.trained);
     let fxScale = scale * form;
-    if (x.lowX2 && own.hp < own.maxHp * 0.5) fxScale *= 2;
+    const hpR = Math.max(0, own.hp / own.maxHp - 0.2 * (own.bonus.r_fallen || 0)); // Dead Man's Switch
+    if (x.lowX2 && hpR < 0.5) fxScale *= 2;
     if (x.vsChill && foe.chill > 0) fxScale *= 1 + x.vsChill / 100;
     // ---- direct hit
     let base = fxValue('dmg', d.dmg, d, u.lvl, u.atk) + u.plus;
@@ -299,16 +317,15 @@ export function simulate(teamA, teamB, opts = {}) {
     if (x.vsBurn && foe.burn > 0) base += x.vsBurn * LV.dmg[u.lvl] * u.atk;
     if (fx.kinova) base += bonusDmg(u, 'kinova') * own.kiGained;
     if (fx.perAlign) base += bonusDmg(u, 'perAlign') * own.alignPairs;
-    if (fx.perGiant) base += bonusDmg(u, 'perGiant') * own.units.filter(o => hasTag(o, 'giant')).length;
+    if (fx.perGiant) base += bonusDmg(u, 'perGiant') * own.units.filter(o => hasTag(o, 'giant')).length * own.giantK;
     if (fx.perScrap) base += bonusDmg(u, 'perScrap') * own.scrap;
-    if (fx.crush) { base += bonusDmg(u, 'crush') * foe.pressure; if (!echoed) foe.pressure = 0; }
+    if (fx.crush) { base += bonusDmg(u, 'crush') * foe.pressure; if (!echoed) foe.pressure = own.bonus.r_abyss ? foe.pressure / 2 : 0; }
     if (fx.perDebuff) base += bonusDmg(u, 'perDebuff') * ['burn', 'poison', 'chill', 'expose', 'weaken', 'doom', 'pressure', 'sleepT'].filter(k => foe[k] > 0.05).length;
     if (fx.perAllyCast) { base += bonusDmg(u, 'perAllyCast') * Math.max(0, own.castCount - u.seen); u.seen = own.castCount; }
     if (fx.burst) { base += own.shield * val(u, 'burst', fx.burst, own) / 100; if (!echoed) own.shield = 0; }
     let mult = (1 + own.growth / 100 + u.ramp / 100) * (1 + foe.expose / 100) * (1 - own.weaken / 100) * own.whet * form;
-    if (own.bonus.rage && own.hp < own.maxHp * 0.5) mult *= 1 + own.bonus.rage / 100;
     if (own.late && t > 20) mult *= 1 + own.late / 100;
-    if (fx.lastStand) mult *= 1 + val(u, 'lastStand', fx.lastStand, own) / 100 * Math.max(0, 1 - own.hp / own.maxHp);
+    if (fx.lastStand) mult *= 1 + val(u, 'lastStand', fx.lastStand, own) / 100 * Math.max(0, 1 - hpR);
     if (x.vsChill && foe.chill > 0) mult *= 1 + x.vsChill / 100;
     if (fx.frontRow && u.pos < 3) mult *= 1 + val(u, 'frontRow', fx.frontRow, own) / 100;
     if (fx.perPressure) mult *= 1 + val(u, 'perPressure', fx.perPressure, own) / 100 * foe.pressure;
@@ -316,6 +333,8 @@ export function simulate(teamA, teamB, opts = {}) {
     if (fx.vsDebuff && (foe.expose > 0 || foe.weaken > 0)) mult *= 1 + val(u, 'vsDebuff', fx.vsDebuff, own) / 100;
     if (fx.volleyAdj) mult *= 1 + val(u, 'volleyAdj', fx.volleyAdj, own) / 100 * own.units.filter(o => o && hasTag(o, 'archer') && inZone('adjacent', u.pos, o.pos)).length;
     if (fx.spendScrap && own.scrap >= 1) { own.scrap -= 1; mult *= 1 + val(u, 'spendScrap', fx.spendScrap, own) / 100; }
+    // Mixtape: a follow-up right after an ally from another dimension hits harder
+    if (own.bonus.mix && !echoed && own.prevType && own.prevType !== d.type) mult *= 1 + own.bonus.mix / 100;
     // Confused: this hit lands on your own team instead
     let target = foe;
     if (own.confuse > 0 && !echoed) { mult *= own.confuse / 100; own.confuse = 0; target = own; ev({ k: 'fx', fx: 'confused', s: own.side, pos: u.pos }); }
@@ -327,8 +346,9 @@ export function simulate(teamA, teamB, opts = {}) {
     // ---- effects in definition order
     for (const key of Object.keys(fx)) applyFx(u, own, foe, key, fx[key], fxScale, dealt);
     u.casts++;
+    if (own.bonus.r_elven && hasTag(u, 'archer')) heal(own, own.maxHp * 0.01 * own.bonus.r_elven, true); // Moonwell
     if (!echoed) {
-      own.castCount++;
+      own.castCount++; own.prevType = d.type;
       if (d.type === 'martial') addKi(own, u, 1);
     }
     // ---- echoes, copies, volleys and repeats (never chain)
@@ -351,6 +371,15 @@ export function simulate(teamA, teamB, opts = {}) {
       if (fx.every4 && u.casts % 4 === 0) cast(u, scale, u, t);
       if (u.oc > 0) { u.oc = 0; cast(u, scale, u, t); }
       if (own.bonus.mirror) cast(u, scale * own.bonus.mirror / 100, u, t); // Mirror of Echoes (never chains)
+      // v0.7.6 trinkets: extra casts are echoes, so they never chain into more echoes
+      if (own.bonus.glass && !u.glassUsed) { u.glassUsed = true; cast(u, scale, u, t); } // Glass Cannon
+      if (u.twins) for (const o of u.twins) cast(o, scale * own.bonus.twin / 100, u, t); // Twin Fates
+      if (u.paragon) cast(u, scale, u, t); // Paragon's Laurel
+      if (own.metro && own.castCount % own.metro === 0) cast(u, scale, u, t); // Metronome
+      if (own.bonus.gear) { // Clockwork Heart
+        let lo = null; for (const o of own.units) if (o && o !== u && (!lo || o.charge / o.cd < lo.charge / lo.cd)) lo = o;
+        if (lo) lo.charge += own.bonus.gear;
+      }
       if (!fx.copyLast) own.lastCast = u;
     }
     actor = prevActor;
@@ -372,14 +401,18 @@ export function simulate(teamA, teamB, opts = {}) {
       ev({ k: 'cast', s: side.side, pos: p, start: true });
     }
   }
-  for (const side of S) if (side.bonus.shield) addShield(side, side.maxHp * side.bonus.shield / 100);
-  for (const side of S) if (side.bonus.sunburn) S[1 - side.side].burn += S[1 - side.side].maxHp * side.bonus.sunburn / 100; // Second Sun
+  for (const side of S) {
+    const foe = S[1 - side.side], B = side.bonus;
+    if (B.watch) { let n = B.watch; for (const o of side.units) if (o && n > 0) { o.charge = o.cd; n--; } } // Pocket Watch
+    if (B.sand) for (const o of foe.units) if (o) o.charge -= B.sand; // Bottle of Sand
+    if (B.r_junk) add(side, 'scrap', side.ntrink * B.r_junk); // Scrap Magnet
+    if (B.r_abyss) add(foe, 'pressure', 3 * B.r_abyss); // Anchor
+  }
   if (log) { log.push(frame(0, S, events)); events = []; }
 
   const speed = (side, t, ignoreChill) => {
     let h = 1 + side.haste / 100;
-    h += (side.bonus.speed || 0) / 100;
-    if (t < 4) h += (side.bonus.open || 0) / 100;
+    if (side.bonus.wolf && side.units.filter(Boolean).length <= 3) h += side.bonus.wolf / 100; // Lone Wolf
     return Math.max(0.3, h * (ignoreChill ? 1 : 1 - side.chill / 100));
   };
 
@@ -391,7 +424,8 @@ export function simulate(teamA, teamB, opts = {}) {
     // 1) charge (Kaelen ignores chill); Ki forms and sleep wear off
     for (const side of S) {
       const sp = speed(side, t) * DT, spi = speed(side, t, true) * DT;
-      for (const u of side.units) if (u) { u.charge += (u.def.x.immune ? spi : sp) * u.spd; if (u.trans > 0) u.trans = Math.max(0, u.trans - DT); }
+      const fault = Math.max(0.3, 1 - (S[1 - side.side].bonus.fault || 0) / 100); // Fault Line slows the enemy back row
+      for (const u of side.units) if (u) { u.charge += (u.def.x.immune ? spi : sp) * u.spd * (u.pos >= 3 ? fault : 1); if (u.trans > 0) u.trans = Math.max(0, u.trans - DT); }
       side.sleepT = Math.max(0, side.sleepT - DT);
       if (side.reset15 && tick === 15 * TPS) { for (const u of side.units) if (u) u.charge = Math.max(u.charge, u.cd); ev({ k: 'fx', fx: 'reset', s: side.side }); }
     }

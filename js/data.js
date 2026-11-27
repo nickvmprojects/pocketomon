@@ -1,5 +1,5 @@
 // Pocketomon — game data. All numbers are first-pass and tuned by tools/gen.mjs.
-export const VERSION = '0.7.5';
+export const VERSION = '0.7.6';
 
 export const RULES = {
   battleSeconds: 30,       // regular time
@@ -12,7 +12,8 @@ export const RULES = {
   winsToChampion: 10,
   rerollCost: 3,
   typesPerRun: 10,        // v0.7: every dimension is in every run
-  copyBias: 0.2,           // chance a shop slot shows a copy of a mon you own
+  copyBias: 0.2,
+  highLvlOdds: 0.25,       // v0.7.6: shop weight of beings you own at level 3+           // chance a shop slot shows a copy of a mon you own
   shieldCap: 0.5,          // shield can't exceed 50% of max HP
 };
 
@@ -46,6 +47,10 @@ export const LV = {
   sec: [0, 1, 1.3, 1.6],
   pct: [0, 1, 1.5, 2.0],
 };
+// v0.7.6: levels past 3 (each extra copy after level 3 adds a level, no cap). Growth per level keeps going, a bit slower.
+export const MAX_LVL = 99;
+const LV_STEP = { dmg: 0.6, fx: 0.45, sec: 0.2, pct: 0.35 };
+for (const k of Object.keys(LV)) for (let n = 4; n <= MAX_LVL; n++) LV[k][n] = Math.round((LV[k][3] + LV_STEP[k] * (n - 3)) * 100) / 100;
 // flat amounts (hits, burn, heal, shield, poison, doom, regen) are compressed by tier so
 // late-game fights don't end in 5 seconds while day 1 fights still finish in time
 export const TIER_SCALE = [0, 1, 1, 1, 1, 1]; // v0.7: tier numbers are written directly in the roster
@@ -64,6 +69,7 @@ export function fxValue(key, base, def, lvl, pow = 1) {
 }
 export const TIER_POWER = [0, 10, 14, 19, 25, 32];
 export const LV_POWER = [0, 1, 1.8, 2.8];
+for (let n = 4; n <= 99; n++) LV_POWER[n] = Math.round((2.8 + 0.7 * (n - 3)) * 100) / 100;
 
 // ---- v0.7 multiverse: 10 dimensions replace types. The `type` field on a being holds its dimension key.
 export const TYPES = {
@@ -209,6 +215,9 @@ export const MONS = [
   m('orrery', 'The Grand Orrery', 'clock', 5, 8, 20, { haste: 10 }, { reset15: 1 }, 'enabler', 'Hits for {dmg} and **Haste** {haste}%. At 15 seconds, every ally casts right away.', 'Models the whole universe. Runs it a little faster.'),
   m('chronarch', 'Chronarch Vale', 'clock', 5, 8, 16, { shield: 35 }, { rewind: 5 }, 'enabler', 'Hits for {dmg} and a **Shield** of {shield}. Once, when your team drops under 30%: rewinds team HP to 5 seconds ago.', 'Has seen how this ends. Changed it.'),
 ];
+// v0.7.6: every cooldown is 0.5s slower than written above (3s -> 3.5s ... 8s -> 8.5s)
+export const CD_NERF = 0.5;
+for (const x of MONS) x.cd = Math.round((x.cd + CD_NERF) * 10) / 10;
 export const MON = Object.fromEntries(MONS.map(x => [x.id, x]));
 // Balance knobs written by tools/balance.mjs from simulations:
 // COST_ADJ = price change per mon (-5..+5, stronger archetypes cost more); TUNE = multiplier on all of a mon's numbers.
@@ -463,63 +472,85 @@ export const AVATARS = [
 ];
 export const AVATAR = Object.fromEntries(AVATARS.map(a => [a.id, a]));
 
-// Trinkets have tiers 1-5. Merging a tier X mon offers 3 tier X trinkets; events offer trinkets of the shop's top tier.
-// fx keys: dmg (hit %), speed (%), hp (%), fxp (effect power %), shield (start shield % HP), open (speed % first 4s),
-// sd (sudden death drain cut %), slot1/slot6 (ATK+POW % for that slot), rage (hit % while under 50% HP),
-// wind (once: heal % HP at <30%), type:{type:%} (ATK+POW for that type), goldDay, winGold, bench, rerolls, copy (shop copy chance %), offers
-const tk = (id, tier, name, icon, desc, fx) => ({ id, tier, name, icon, desc, fx });
+// v0.7.6 trinket overhaul: no flat team-wide stat boosts. Trinkets bend rules, reward positions, or change how a
+// dimension's own mechanic works (relics). Trinkets can repeat (effects stack), except those with a `max`.
+// Battle keys (summed per copy): slot1/slot6 (ATK+POW % for that slot), sd (sudden death cut %), wind (once: heal % HP <30%),
+// totem, mirror (echo %), hp (team HP %, negative for Glass Cannon), watch (slots pre-charged), sand (enemy charge delay s),
+// mix (cross-dimension follow-up hit %), glass (first cast echoes), wolf (speed % with <=3 beings), rainbow, fame,
+// twin (twin echo %), fault (enemy back row slow %), chimera, turn (refill cooldowns at 50%), paragon, gear (charge s),
+// r_<dimension> (relics). Run keys: goldDay, winGold, bench, rerolls, copy, offers, coupon, spare, wish, hand, anvil.
+const tk = (id, tier, name, icon, desc, fx, max) => ({ id, tier, name, icon, desc, fx, max });
 export const TRINKETS = [
   // tier 1
-  tk('whetstone', 1, 'Whetstone', '🗡️', 'Your hits deal +6% damage.', { dmg: 6 }),
-  tk('sneakers', 1, 'Sneakers', '👟', 'Your team acts 4% faster.', { speed: 4 }),
-  tk('lunchbox', 1, 'Lunchbox', '🍱', 'Team HP +6%.', { hp: 6 }),
-  tk('pebblecharm', 1, 'Pebble Charm', '🪨', 'Start each battle with a shield of 5% team HP.', { shield: 5 }),
   tk('coinpurse', 1, 'Coin Purse', '🪙', '+4 gold every day.', { goldDay: 4 }),
-  tk('clover', 1, 'Lucky Clover', '🍀', 'Copies of your beings show up in the shop more often.', { copy: 10 }),
+  tk('clover', 1, 'Lucky Clover', '🍀', 'Copies of your beings show up in the shop more often, even after level 3.', { copy: 10, noFade: 1 }),
+  tk('coupon', 1, 'Coupon Book', '🎟️', 'The first being you buy each day costs 5 less.', { coupon: 5 }),
+  tk('pocketwatch', 1, 'Pocket Watch', '⏱️', 'Your slot 1 being starts every battle ready to cast. Each extra watch readies the next slot too.', { watch: 1 }),
+  tk('sandbottle', 1, 'Bottle of Sand', '🏺', 'Enemy beings start every battle 1.5s behind.', { sand: 1.5 }),
+  tk('spareparts', 1, 'Spare Parts', '🔧', 'Selling a being also gives you a junk trinket.', { spare: 1 }),
   // tier 2
-  tk('hourglass', 2, 'Hourglass', '⏳', 'Your team acts 7% faster.', { speed: 7 }),
-  tk('thickhide', 2, 'Thick Hide', '🦏', 'Team HP +12%.', { hp: 12 }),
-  tk('prism', 2, 'Prism', '🔷', 'All effects +12% (not hits).', { fxp: 12 }),
   tk('leaderbadge', 2, 'Leader Badge', '🎖️', 'Slot 1 being gets +30% ATK and POW.', { slot1: 30 }),
   tk('fatwallet', 2, 'Fat Wallet', '👛', '+8 gold every day.', { goldDay: 8 }),
   tk('dice', 2, 'Loaded Dice', '🎲', '1 free reroll every day.', { rerolls: 1 }),
-  // tier 3 (+ one type charm per type, generated below)
-  tk('spikedcollar', 3, 'Spiked Collar', '⛓️', 'Your hits deal +12% damage.', { dmg: 12 }),
-  tk('openingact', 3, 'Opening Act', '🎬', 'Your team acts 50% faster during the first 4 seconds.', { open: 50 }),
+  tk('wishbone', 2, 'Wishbone', '🦴', 'Lose by less than 10% of their HP and you keep your life. Then it snaps.', { wish: 1 }),
+  tk('handmedowns', 2, 'Hand-me-downs', '🧥', 'When you sell a being, a random ally from the same dimension gets half of its bonus ATK, POW and earned hit damage.', { hand: 1 }),
+  tk('mixtape', 2, 'Mixtape', '📼', 'When a being casts right after an ally from a different dimension, it hits 25% harder.', { mix: 25 }),
+  // tier 3
   tk('rearguard', 3, 'Rear Guard', '🛡️', 'Slot 6 being gets +40% ATK and POW.', { slot6: 40 }),
-  tk('warmblanket', 3, 'Warm Blanket', '🧣', 'Start each battle with a shield of 12% team HP.', { shield: 12 }),
   tk('overtime', 3, 'Overtime Boots', '🥾', 'Take 50% less sudden death drain.', { sd: 50 }),
   tk('goldenegg', 3, 'Golden Egg', '🥚', '+10 gold after every win.', { winGold: 10 }),
-  tk('backpack', 3, 'Big Backpack', '🎒', '+2 bench slots.', { bench: 2 }),
+  tk('backpack', 3, 'Big Backpack', '🎒', '+2 bench slots.', { bench: 2 }, 2),
+  tk('glasscannon', 3, 'Glass Cannon', '🔫', 'Team HP −25%, but every being\'s first cast each battle is echoed at full power.', { hp: -25, glass: 1 }),
+  tk('lonewolf', 3, 'Lone Wolf', '🐺', 'If 3 or fewer beings fight, they act 40% faster.', { wolf: 40 }),
+  tk('rainbow', 3, 'Rainbow Badge', '🌈', 'Every different dimension on your team counts as 1 more trinket.', { rainbow: 1 }),
   // tier 4
-  tk('wardrum', 4, 'War Drum', '🥁', 'Your team acts 12% faster.', { speed: 12 }),
-  tk('heartlocket', 4, 'Heart Locket', '💗', 'Team HP +22%.', { hp: 22 }),
-  tk('crystalball', 4, 'Crystal Ball', '🔮', 'All effects +25% (not hits).', { fxp: 25 }),
-  tk('secondwind', 4, 'Second Wind', '🌬️', 'Once per battle, heal 15% team HP when under 30%.', { wind: 15 }),
-  tk('berserker', 4, 'Berserker Mask', '👺', 'Your hits deal +30% damage while under 50% HP.', { rage: 30 }),
-  tk('treasuremap', 4, 'Treasure Map', '🗺️', 'The shop shows 1 more offer.', { offers: 1 }),
+  tk('treasuremap', 4, 'Treasure Map', '🗺️', 'The shop shows 1 more offer.', { offers: 1 }, 2),
+  tk('twinfates', 4, 'Twin Fates', '♊', 'Two copies of the same being on your team (not merged) are twins: when one casts, the other echoes it at 60%.', { twin: 60 }),
+  tk('halloffame', 4, 'Hall of Fame', '🏛️', 'Every being at level 4 or higher counts as 1 more trinket, and gives +15 gold each time it levels up.', { fame: 1 }),
+  tk('faultline', 4, 'Fault Line', '🪨', 'The enemy back row acts 25% slower.', { fault: 25 }),
   // tier 5
-  tk('crown', 5, 'Crown of Kings', '👑', 'Hits +15%, effects +15%, team HP +10%.', { dmg: 15, fxp: 15, hp: 10 }),
-  tk('timeturner', 5, 'Time Turner', '⌛', 'Your team acts 18% faster.', { speed: 18 }),
+  tk('chimera', 5, 'Chimera Crown', '👑', 'Your slot 1 being also counts as a Giant, a Hunter, an Archer and every Zodiac element.', { chimera: 1 }),
+  tk('timeturner', 5, 'Time Turner', '⌛', 'The first time your HP drops below 50%, all your beings are instantly ready to cast.', { turn: 1 }),
   tk('phoenixfeather', 5, 'Phoenix Feather', '🪶', 'Once per battle, heal 30% team HP when under 30%.', { wind: 30 }),
-  tk('dragonscale', 5, 'Dragon Scale', '🐉', 'Team HP +10% and start with a shield of 25% team HP.', { hp: 10, shield: 25 }),
-  tk('elementalorb', 5, 'Elemental Orb', '🌈', 'All effects +40% (not hits).', { fxp: 40 }),
   tk('goldengoose', 5, 'Golden Goose', '🪿', '+15 gold every day and +10 after every win.', { goldDay: 15, winGold: 10 }),
-  // tier 6: legendary, only from merging a tier 5 mon to level 3
-  tk('worldseed', 6, 'World Seed', '🌳', 'All your beings get +25% ATK and POW.', { all: 25 }),
-  tk('clockwork', 6, 'Clockwork Heart', '⚙️', 'Your team acts 30% faster.', { speed: 30 }),
-  tk('undying', 6, 'Undying Totem', '🗿', 'Once per battle, survive a lethal blow at 1 HP and heal 40% team HP.', { totem: 40 }),
-  tk('mirror', 6, 'Mirror of Echoes', '🪞', 'Every cast of your beings also echoes at 25% power.', { mirror: 25 }),
-  tk('dragonhoard', 6, 'Dragon Hoard', '💰', '+25 gold every day and +15 after every win.', { goldDay: 25, winGold: 15 }),
-  tk('secondsun', 6, 'Second Sun', '☀️', 'Start each battle with a shield of 30% team HP, and the enemy burning.', { shield: 30, sunburn: 4 }),
+  // tier 6: legendary, one of each per run. From level 3 merges of tier 5 beings and every level past 3.
+  tk('undying', 6, 'Undying Totem', '🗿', 'Once per battle, survive a lethal blow at 1 HP and heal 40% team HP.', { totem: 40 }, 1),
+  tk('mirror', 6, 'Mirror of Echoes', '🪞', 'Every cast of your beings also echoes at 25% power.', { mirror: 25 }, 1),
+  tk('dragonhoard', 6, 'Dragon Hoard', '💰', '+25 gold every day and +15 after every win.', { goldDay: 25, winGold: 15 }, 1),
+  tk('paragon', 6, 'Paragon\'s Laurel', '🏅', 'Your highest-level being casts everything twice.', { paragon: 1 }, 1),
+  tk('clockwork', 6, 'Clockwork Heart', '⚙️', 'Whenever one of your beings casts, your least-charged being gains 0.3s.', { gear: 0.3 }, 1),
+  tk('anvil', 6, 'Starforge Anvil', '⚒️', 'Every copy that levels up a being past level 3 also adds +10% ATK and POW to it.', { anvil: 10 }, 1),
 ];
 // tier 0 = junk trinkets: no effect, stackable, only from junk-trinket triggers (they still fire "trinket gained")
 for (const [id, name, icon] of [['bottlecap', 'Bottle Cap', '🔘'], ['rubberduck', 'Rubber Duck', '🦆'], ['oldsock', 'Old Sock', '🧦'], ['bentspoon', 'Bent Spoon', '🥄'], ['lostbutton', 'Lost Button', '🪡'], ['banana', 'Banana Peel', '🍌']])
   TRINKETS.push(tk(id, 0, name, icon, 'Junk. Does nothing, but counts as a trinket.', {}));
 export const trinketPrice = (t) => 10 + 10 * t.tier;
-for (const t of Object.keys(TYPES)) TRINKETS.push(tk('charm_' + t, 3, `${TYPES[t].name} Charm`, TYPES[t].icon, `Your ${TYPES[t].name} beings get +30% ATK and POW.`, { type: { [t]: 30 } }));
+// relics (tier 3): one per dimension, each changes how that dimension's mechanic works
+const RELICS = {
+  fallen: ['Dead Man\'s Switch', '🔴', 'Last Stand acts as if your team had 20% less HP than it does.'],
+  martial: ['Black Belt', '🥋', 'Martial beings Transform at 4 Ki instead of 5, and their Transformations last 3s longer.'],
+  zodiac: ['Star Chart', '🗺️', 'Diagonal neighbours count as adjacent for Alignment, and Aligned gives +10% more.'],
+  giants: ['Trophy Rack', '🦌', 'Every Giant counts twice for your Hunters.'],
+  elven: ['Moonwell', '🌕', 'Every Archer cast heals 1% team HP.'],
+  necro: ['Kill Switch', '🔌', 'Assimilate drains your allies only half as much.'],
+  junk: ['Scrap Magnet', '🧲', 'Start every battle with 1 Scrap per trinket you own.'],
+  abyss: ['Anchor', '⚓', 'The enemy starts with 3 Pressure, and cashing in Pressure only uses half of it.'],
+  dream: ['Lullaby Box', '🎶', 'Your Sleep effects last 50% longer.'],
+  clock: ['Metronome', '🎼', 'Every 5th cast your team makes is echoed at full power.'],
+};
+for (const t of Object.keys(TYPES)) { const [name, icon, desc] = RELICS[t]; TRINKETS.push(tk('relic_' + t, 3, name, icon, `${TYPES[t].name} relic. ${desc}`, { ['r_' + t]: 1 })); }
+// saves from before v0.7.6: removed trinkets become a new one of the same tier
+export const TRINKET_MIGRATE = {
+  whetstone: 'pocketwatch', sneakers: 'sandbottle', lunchbox: 'coupon', pebblecharm: 'spareparts',
+  hourglass: 'mixtape', thickhide: 'wishbone', prism: 'handmedowns',
+  spikedcollar: 'glasscannon', openingact: 'lonewolf', warmblanket: 'rainbow',
+  wardrum: 'faultline', heartlocket: 'halloffame', crystalball: 'twinfates', secondwind: 'faultline', berserker: 'twinfates',
+  crown: 'chimera', dragonscale: 'phoenixfeather', elementalorb: 'chimera',
+  worldseed: 'paragon', secondsun: 'anvil',
+};
+for (const t of Object.keys(TYPES)) TRINKET_MIGRATE['charm_' + t] = 'relic_' + t;
 export const TRINKET = Object.fromEntries(TRINKETS.map(t => [t.id, t]));
-export const ECON_KEYS = ['goldDay', 'winGold', 'bench', 'rerolls', 'copy', 'offers'];
+export const ECON_KEYS = ['goldDay', 'winGold', 'bench', 'rerolls', 'copy', 'offers', 'noFade', 'coupon', 'spare', 'wish', 'hand', 'anvil'];
 export const isBattleTrinket = (id) => TRINKET[id] && Object.keys(TRINKET[id].fx).some(k => !ECON_KEYS.includes(k));
 // Sum of all trinket effects (charms merge per type)
 export function trinketBonus(ids) {
@@ -537,6 +568,15 @@ export function trinketBonus(ids) {
 export const BOT_NAMES = ['Ash Tray', 'Misty Window', 'Brock Lee', 'Gary Oakley', 'Professor Elm Street', 'Nurse Jolene', 'Team Rocket Science', 'Lass Vegas', 'Youngster Joey', 'Bug Catcher Bob', 'Hiker Mike', 'Swimmer Sue', 'Picnicker Pam', 'Cool Trainer Kai', 'Ace Ventura', 'Super Nerd Ned', 'Fisher Price', 'Biker Bart', 'Gentleman Jim', 'Beauty Bella', 'Psychic Sam', 'Blackbelt Bo', 'Juggler Jules', 'Rancher Rita', 'Tamer Tina', 'Ranger Rick', 'Burglar Barry', 'Scientist Sid', 'Sailor Sal', 'Camper Cam', 'Dragon Tamer Dot', 'Old Man Pete', 'Twin Tia & Tea', 'Cue Ball Carl', 'Rocker Roxy', 'Medium Maud', 'Channeler Chan', 'Bird Keeper Birdie', 'Artist Arturo', 'Collector Colin'];
 
 export const CHANGELOG = [
+  { v: '0.7.6', date: '2026-11-27', notes: [
+    'Levels past 3: once a being is level 3, every extra copy you buy adds a level (4, 5, 6... no cap), and every level past 3 gives a legendary (tier 6) trinket pick.',
+    'Beings you own at level 3 or higher show up only 25% as often in the shop (Lucky Clover cancels this).',
+    'Every being\'s cooldown is 0.5s slower (3s is now 3.5s).',
+    'Trinket overhaul: no more flat stat boosts. New trinkets bend the rules: Pocket Watch, Bottle of Sand, Coupon Book, Spare Parts, Wishbone, Hand-me-downs, Mixtape, Glass Cannon, Lone Wolf, Rainbow Badge, Twin Fates, Hall of Fame, Fault Line, Chimera Crown, Time Turner, Paragon\'s Laurel, Clockwork Heart, Starforge Anvil.',
+    'Dimension charms are now relics that change how each dimension\'s trick works (Dead Man\'s Switch, Black Belt, Star Chart, Trophy Rack, Moonwell, Kill Switch, Scrap Magnet, Anchor, Lullaby Box, Metronome).',
+    'You can own the same trinket more than once and effects stack, except Big Backpack and Treasure Map (2 max) and legendaries (1 each).',
+    'Your saved run carries over: removed trinkets were swapped for new ones of the same tier. Classic v0.7 now keeps its own saved run.',
+  ] },
   { v: '0.7.5', date: '2026-11-26', notes: [
     'The "Rift" presentation update. Same rules, same beings, brand new look: a black rift with every card a window into its dimension, a poster font, and line icons and dimension sigils in place of emoji.',
     'Battles show who did what: every hit beams from the being that cast it into the enemy HP bar, with the number where it lands. Gold links show which ally set off a trigger. Each being shows the damage it has dealt so far.',

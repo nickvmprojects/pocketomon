@@ -1,25 +1,27 @@
-// Pocketomon UI — v0.7.5 "Rift" presentation. Same rules and engine as v0.7; the old UI lives in /classic/.
+// Pocketomon UI — v0.7.6 ("Rift" presentation from v0.7.5). Same rules and engine as v0.7; the old UI lives in /classic/.
 // Mobile first. Taps only ever select; moving, buying and selling is drag-only (plus the Buy/Sell buttons).
-import * as D from './data.js?v=0.7.5';
-import * as R from './run.js?v=0.7.5';
-import { simulate, previewTeam } from './battle.js?v=0.7.5';
-import { monSvg } from './art.js?v=0.7.5';
-import { LIBRARY } from './snapdata.js?v=0.7.5';
-import { IC, SIGIL, COORD } from './icons.js?v=0.7.5';
-import { sfx, unlock as unlockAudio, setMuted } from './sfx.js?v=0.7.5';
-import { FxLayer } from './fx.js?v=0.7.5';
+import * as D from './data.js?v=0.7.6';
+import * as R from './run.js?v=0.7.6';
+import { simulate, previewTeam } from './battle.js?v=0.7.6';
+import { monSvg } from './art.js?v=0.7.6';
+import { LIBRARY } from './snapdata.js?v=0.7.6';
+import { IC, SIGIL, COORD } from './icons.js?v=0.7.6';
+import { sfx, unlock as unlockAudio, setMuted } from './sfx.js?v=0.7.6';
+import { FxLayer } from './fx.js?v=0.7.6';
 
 const { MON, TYPES, FX, RULES } = D;
 const $app = document.getElementById('app');
 const $modal = document.getElementById('modal');
 const $toast = document.getElementById('toast');
-const KEY_RUN = 'pocketomon.run.v1', KEY_PROF = 'pocketomon.profile.v1';
+const KEY_RUN = 'pocketomon.run.v2', KEY_RUN_OLD = 'pocketomon.run.v1', KEY_PROF = 'pocketomon.profile.v1';
 const REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const load = (k) => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
 const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* private mode */ } };
-let run = load(KEY_RUN);
+// v0.7.6: the run is saved under its own key (classic v0.7 keeps the old one, since its rules differ now)
+let run = load(KEY_RUN) || load(KEY_RUN_OLD);
 if (run && run.v !== 3) run = null; // older saves use beings from before the v0.7 multiverse
+if (run) R.migrateRun(run);
 let prof = Object.assign({ rp: 0, runs: 0, champs: 0, bestWins: 0, speed: 2, seen: '', mute: false, caught: [], spotted: [], bestKO: null }, load(KEY_PROF) || {});
 if (prof.rank === undefined) prof.rank = Math.min(D.RANKS.length - 1, Math.floor((prof.rp || 0) / 100)); // migrate v0.1 RP
 prof.peakRank = Math.max(prof.peakRank || 0, prof.rank);
@@ -115,6 +117,7 @@ function statBadges(m, eff) {
   }
   return `<div class="sbadges">${out}</div>`;
 }
+const stars = (l) => (l <= 3 ? '★'.repeat(l) : `★${l}`);
 const dimStyle = (type) => `--tc:${TYPES[type].color};--td:${TYPES[type].dark}`;
 const silo = (id) => !caught.has(id);
 
@@ -126,7 +129,7 @@ function card(m, o = {}) {
   const marks = (D.TRIGGERS[m.id] ? `<i class="mk trig">${IC.bell}</i>` : '') + (D.AURAS[m.id] ? `<i class="mk aura">${IC.aura}</i>` : '') + (tagIc ? `<i class="mk tag">${tagIc}</i>` : '');
   const eff = o.zone === 'dex' ? { atk: 1, pow: 1, plus: 0 } : effOf(m, o.zone, o.i);
   const unknown = o.zone === 'dex' && silo(m.id);
-  const lvTag = m.lvl && !shop && o.zone !== 'dex' ? `<span class="lvtag l${m.lvl}">${'★'.repeat(m.lvl)}</span>` : '';
+  const lvTag = m.lvl && !shop && o.zone !== 'dex' ? `<span class="lvtag l${m.lvl}">${stars(m.lvl)}</span>` : '';
   return `<div class="card t-${def.type} ${o.sel ? 'sel' : ''} ${o.target ? 'target' : ''} ${o.small ? 'small' : ''} ${o.aura ? 'aurahit' : ''} ${unknown ? 'unknown' : ''} ${m.lvl >= 2 && !shop ? 'lv' + m.lvl : ''}" data-z="${o.zone}" data-i="${o.i}" style="${dimStyle(def.type)}">
     <div class="art">${monSvg(m.id)}</div>
     <div class="c-top"><span class="tierpill t${def.tier}">T${def.tier}</span>${lvTag}<span class="sig">${SIGIL[def.type]}</span></div>
@@ -156,20 +159,22 @@ function detail(m, ctx) {
   if (ctx.zone === 'shop') {
     const price = R.offerPrice(run, def);
     const copies = R.owned(run).filter(o => o.m.id === m.id && o.m.lvl === 1).length;
-    if (copies >= 2) note = `<div class="note good">You own 2 copies: buying this merges them into level 2!</div>`;
+    const big = R.owned(run).find(o => o.m.id === m.id && o.m.lvl >= 3);
+    if (big) note = `<div class="note good">Feeds your level ${big.m.lvl} ${def.name}: level ${big.m.lvl + 1} and a legendary trinket pick!</div>`;
+    else if (copies >= 2) note = `<div class="note good">You own 2 copies: buying this merges them into level 2!</div>`;
     else if (copies === 1) note = `<div class="note">You own 1 copy. Get 3 to merge into level 2.</div>`;
     btns = `<button class="primary" data-act="buy" ${run.gold < price ? 'disabled' : ''}>Buy · <span class="g">${IC.coin}${price}</span></button>
       <button data-act="lock">${ctx.locked ? IC.unlock + ' Unlock' : IC.lock + ' Lock for next day'}</button>`;
   } else if ((ctx.zone === 'team' || ctx.zone === 'bench') && !ctx.info) {
     btns = `<button data-act="sell">${IC.trash} Sell · <span class="g">+${R.sellValue(run, m)}</span></button>`;
-    if (lvl < 3) note = `<div class="note dim">${lvl === 1 ? 'Merge 3 copies → level 2.' : 'Merge with another level 2 → level 3.'}</div>`;
+    note = `<div class="note dim">${lvl === 1 ? 'Merge 3 copies → level 2.' : lvl === 2 ? 'Merge with another level 2 → level 3.' : 'Every extra copy you buy adds a level (and a legendary trinket pick).'}</div>`;
   }
   const unknown = ctx.zone === 'dex' && silo(m.id);
   return `<div class="detail ${ctx.sheet ? 'sheet' : ''} ${ctx.zone === 'shop' ? 'top' : ''} ${unknown ? 'unknown' : ''}" style="${dimStyle(def.type)}">
     ${ctx.sheet ? `<button class="sheetx icon" data-act="deselect">${IC.close}</button>` : ''}
     <div class="d-head"><div class="d-art">${monSvg(m.id)}</div>
       <div class="d-id"><div class="d-coord">${SIGIL[def.type]} ${COORD[def.type]} · ${esc(T.name)}</div>
-      <div class="d-name">${def.name} ${ctx.zone === 'dex' ? '' : `<span class="lvtxt">${'★'.repeat(lvl)}</span>`}</div>
+      <div class="d-name">${def.name} ${ctx.zone === 'dex' ? '' : `<span class="lvtxt">${stars(lvl)}</span>`}</div>
       <div class="d-meta"><span class="tierpill t${def.tier}">Tier ${def.tier}</span> <span class="num">⏱ ${def.cd}s</span> ${tagLine(def)}</div>
       ${ctx.zone !== 'dex' ? `<div class="d-meta"><span>ATK <b class="${buffCls(eff.atk)}">${Math.round(eff.atk * 100)}%</b></span> <span>POW <b class="${buffCls(eff.pow)}">${Math.round(eff.pow * 100)}%</b></span>${eff.spd > 1.001 ? ` <span>Speed <b class="${buffCls(eff.spd)}">+${Math.round((eff.spd - 1) * 100)}%</b></span>` : ''}</div>` : ''}</div></div>
     ${unknown ? `<div class="note">Not caught yet: own one in a run to add it to your Multidex.</div>` : ''}
@@ -287,12 +292,12 @@ function showCelebration(item, done) {
   let dur = 1500;
   if (item.k === 'merge') {
     const def = MON[item.id];
-    el.innerHTML = `<div class="cel-box merge l${item.lvl}" style="${dimStyle(def.type)}"><div class="burst"></div>${confetti(item.lvl === 3 ? 44 : 28)}
-      <div class="cel-art">${monSvg(item.id)}</div><div class="cel-title">LEVEL ${item.lvl}${item.lvl === 3 ? '!!' : '!'}</div>
-      <div class="cel-sub">${def.name} <span class="stars">${'★'.repeat(item.lvl)}</span></div></div>`;
-    dur = item.lvl === 3 ? 2000 : 1500;
-    sfx.merge(item.lvl);
-    if (navigator.vibrate) navigator.vibrate(item.lvl === 3 ? [30, 40, 60] : 30);
+    el.innerHTML = `<div class="cel-box merge l${Math.min(3, item.lvl)}" style="${dimStyle(def.type)}"><div class="burst"></div>${confetti(item.lvl >= 3 ? 44 : 28)}
+      <div class="cel-art">${monSvg(item.id)}</div><div class="cel-title">LEVEL ${item.lvl}${item.lvl >= 3 ? '!!' : '!'}</div>
+      <div class="cel-sub">${def.name} <span class="stars">${stars(item.lvl)}</span></div></div>`;
+    dur = item.lvl >= 3 ? 2000 : 1500;
+    sfx.merge(Math.min(3, item.lvl));
+    if (navigator.vibrate) navigator.vibrate(item.lvl >= 3 ? [30, 40, 60] : 30);
   } else if (item.k === 'gift') {
     const t = D.TRINKET[item.id];
     el.innerHTML = `<div class="cel-box gift"><div class="giftbox">${IC.gift}</div>
@@ -425,7 +430,11 @@ function renderShop() {
   const tpanel = tq ? `<div class="popup"><div class="tpick"><div class="kick">MERGE REWARD</div><h2>Pick a tier ${tq.tier} trinket</h2><div class="sub">It lasts the whole run.${run.trinketQueue.length > 1 ? ` (${run.trinketQueue.length - 1} more after this)` : ''}</div>
     <div class="choices">${tq.options.map(id => { const t = D.TRINKET[id]; return `<button class="choice row" data-act="picktrinket" data-id="${id}">
       <div class="c-ic">${t.icon}</div><div class="c-t">${esc(t.name)} <span class="ttier t${t.tier}">T${t.tier}</span></div><div class="c-d">${esc(t.desc)}</div></button>`; }).join('')}</div></div></div>` : '';
-  const ownTag = (id) => { const n = R.owned(run).filter(x => x.m.id === id && x.m.lvl === 1).length; return n ? (n >= 2 ? 'MERGE ▲' : `own ${n}`) : ''; };
+  const ownTag = (id) => {
+    const big = R.owned(run).find(x => x.m.id === id && x.m.lvl >= 3);
+    if (big) return 'MERGE ▲ LV' + (big.m.lvl + 1);
+    const n = R.owned(run).filter(x => x.m.id === id && x.m.lvl === 1).length; return n ? (n >= 2 ? 'MERGE ▲' : `own ${n}`) : '';
+  };
   const nOff = run.shop.length + 1;
   const cols = nOff > 6 ? 4 : 3;
   $app.innerHTML = `${topbar()}<main class="fit shopfit" data-act-bg="1">
@@ -482,11 +491,11 @@ function helpHtml() {
   <p>Each <b>day</b>: pick 1 of 3 <b>event</b> choices, shop for beings, then fight <b>one 30 second battle</b> against another trainer's snapshot from the same day. Win 10 battles to become Champion; lose 5 lives and the run ends.</p>
   <p><b>Battles</b> are automatic. Every being casts its move each time its cooldown fills, in slot order (slot 1 first). All beings hit the enemy team's <b>shared HP bar</b>. After 30s, <b>sudden death</b> drains both teams faster every second. Ties go to you.</p>
   <p><b>KO time</b>: every win is graded by how fast you emptied their HP: <b>S</b> under 6s, <b>A</b> under 10s, <b>B</b> under 15s, <b>C</b> under 30s, <b>D</b> in sudden death. Great teams win in seconds: chase your best KO.</p>
-  <p><b>Shop</b>: up to 6 beings on your team, extras wait on the bench. Each shop copy has its own ATK and POW roll. Buy <b>3 copies</b> of a being to merge it into <b>level 2</b>, and two level 2s into <b>level 3</b>. Merging keeps the best ATK and POW of the copies. Tier never changes. Lock offers you want to keep for tomorrow; unspent gold carries over.</p>
+  <p><b>Shop</b>: up to 6 beings on your team, extras wait on the bench. Each shop copy has its own ATK and POW roll. Buy <b>3 copies</b> of a being to merge it into <b>level 2</b>, and two level 2s into <b>level 3</b>. After that, <b>every extra copy adds a level</b> (4, 5, 6... no cap), each with a legendary trinket pick. Beings you own at level 3+ show up less often in the shop. Merging keeps the best ATK and POW of the copies. Tier never changes. Lock offers you want to keep for tomorrow; unspent gold carries over.</p>
   <p><b>The multiverse</b>: beings come from <b>10 dimensions</b>, each with its own style and tricks, and every dimension is in every run. Beings from the same dimension often work well together, and some combos cross dimensions. Nothing tells you which: experiment! The sigils next to "Team" count how many beings of each dimension you field.</p>
   <p><b>Tap</b> any card to see its details (tap another to switch, ✕ or empty space to close). Taps never move or buy anything.</p>
   <p><b>Drag</b> to act: drag a shop card onto an empty team or bench slot to buy it there (or onto a slot holding 2 copies to merge). Drag your beings onto other slots to swap them, or onto the bottom bar to sell. Releasing anywhere else cancels. The details panel also has Buy and Sell buttons.</p>
-  <p><b>Trinkets</b>: one is always for sale in the shop. Some beings make junk trinkets (no effect, but they count for "when you gain a trinket" triggers) or find real ones.</p>
+  <p><b>Trinkets</b>: they bend the rules instead of adding flat stats. Each dimension has a <b>relic</b> that changes how its trick works. You can own several of the same trinket (effects stack), except Big Backpack and Treasure Map (2 max) and tier 6 legendaries (1 each). One is always for sale in the shop. Some beings make junk trinkets (no effect, but they count for "when you gain a trinket" triggers) or find real ones.</p>
   <p><b>Team grid</b>: slots 1-3 are the front row and cast first; 4-6 are the back row. In battle the front rows face each other across the rift. "Behind" means the slot directly behind; "adjacent" means left, right, front or behind (no diagonals).</p>
   <p><b>Triggers</b> (bell icon): some beings react to things (being bought or sold, levelling up, trinkets, rerolls, wins, allies casting, low HP, sudden death...). In battle a gold link shows which ally set a trigger off. A being is never triggered by a copy of itself, and fires at most once per chain. <b>Auras</b> (sun icon) constantly buff nearby (or far) allies.</p>
   <p><b>Chains</b>: when many casts and triggers fire close together, the CHAIN counter climbs (and so does the music).</p>
@@ -494,14 +503,14 @@ function helpHtml() {
   <p><b>Buffs</b>: numbers on cards and in the details are what the being will have when the battle starts (auras, charms, slot trinkets and growth included). The more a number is buffed, the brighter it glows.</p>
   <p><b>In battle</b>: tap any being to see its live stats; the small number on each being is the damage it has dealt so far. Pause, 2× and Skip are at the bottom. After the fight, "Hide" lets you inspect the board.</p>
   <p><b>Multidex</b>: every being you own is <b>caught</b> for good; beings you meet in shops or battles are <b>seen</b>. Uncaught beings show as silhouettes.</p>
-  <p><b>Merge rewards</b>: every merge lets you pick 1 of 3 <b>trinkets</b> of the merged being's tier. Reaching level 3 gives a single pick one tier higher, up to legendary tier 6. Trinkets last the whole run.</p>
+  <p><b>Merge rewards</b>: every merge lets you pick 1 of 3 <b>trinkets</b> of the merged being's tier. Reaching level 3 gives a single pick one tier higher, up to legendary tier 6. Every level past 3 gives a tier 6 pick. Trinkets last the whole run.</p>
   <p><b>Prices</b>: a being costs about 10 × its tier, ±5 depending on how strong it is. Selling refunds half per copy.</p>
   <p><b>Ranked</b>: opponents are picked to match your team's hidden strength (a bit above it at higher ranks). Your rank moves when the run ends: <b>6+ wins → rank up</b>, <b>5 wins → rank holds</b>, <b>under 5 → rank down</b>. Ranks: ${D.RANKS.map(r => r.icon + ' ' + r.name).join(' → ')}.</p>
   <p><b>After a battle</b>, the result shows how much damage and support (heals, shields, buffs) each being gave on both teams, with an MVP each.</p>
   <h3>Dimensions</h3>${D.TYPE_KEYS.map(k => `<p><b style="color:${TYPES[k].color}">${SIGIL[k]} ${TYPES[k].name} (${TYPES[k].mech})</b>: ${esc(TYPES[k].blurb)}</p>`).join('')}
   <h3>Keywords</h3><p class="dim">Tap a bold word in any details panel for its meaning.</p>${['Burn', 'Poison', 'Shield', 'Chill', 'Haste', 'Growth', 'Expose', 'Weaken', 'Doom', 'Ki', 'Aligned', 'Scrap', 'Pressure', 'Sleep', 'Assimilate', 'Last Stand', 'Overclock'].map(k => `<p><b class="kw" data-act="kw" data-k="${k}">${k}</b>: ${esc(D.KEYWORDS[k])}</p>`).join('')}
   <p class="dim">Healing above max HP turns into shield at half value. Shield caps at 50% of max HP.</p>
-  <p class="dim">Prefer the old look? <a href="classic/">Classic v0.7</a> is still there and shares your saved run.</p>`;
+  <p class="dim">Prefer the old look? <a href="classic/">Classic v0.7</a> is still there (with the v0.7 rules and its own saved run).</p>`;
 }
 function newsHtml() {
   return `<div class="kick">CHANGELOG</div><h2>What's new</h2>${D.CHANGELOG.map(c => `<h3>v${c.v} · ${c.date}</h3><ul>${c.notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul>`).join('')}`;
@@ -683,6 +692,7 @@ function canDrop(src, z, i) {
   if (src.zone === 'shop') {
     const m = slotsOf(z)[i], id = run.shop[src.i].mon.id;
     if (!m) return true;
+    if (m.id === id && m.lvl >= 3) return true; // feeds a level 3+ being
     return m.id === id && m.lvl === 1 && R.owned(run).filter(o => o.m.id === id && o.m.lvl === 1).length >= 2; // completes a merge
   }
   return !(src.zone === z && src.i === i);
@@ -799,7 +809,7 @@ function startBattle() {
   const res = simulate(R.battleTeamFromSnap(me), R.battleTeamFromSnap(opp), { log: true });
   const won = res.winner === 0;
   const daysBefore = run.day;
-  const sum = R.finishBattle(run, won, opp, res.gains[0]);
+  const sum = R.finishBattle(run, won, opp, res.gains[0], res.hp[1] / res.maxHp[1]);
   const h = run.history[run.history.length - 1]; if (h) h.t = Math.round(res.t * 10) / 10;
   // KO time records (wins only)
   let rec = null;
@@ -829,7 +839,7 @@ function bSide(snap, side, title) {
   // front rows face each other across the rift: the opponent's front row is drawn at the bottom of their block
   const order = isOpp ? [3, 4, 5, 0, 1, 2] : [0, 1, 2, 3, 4, 5];
   const mons = `<div class="brow">${order.map(i => { const m = snap.team[i]; return m ? `<div class="bmon t-${MON[m.id].type} ${i < 3 ? 'front' : 'back'}" id="bm${side}${i}" data-bs="${side}" data-bp="${i}" style="${dimStyle(MON[m.id].type)}">
-      <div class="art">${monSvg(m.id)}</div><span class="lvtag l${m.lvl}">${'★'.repeat(m.lvl)}</span><span class="ki num"></span><span class="dm num"></span><div class="cd"><div></div></div></div>` : `<div class="bmon none"></div>`; }).join('')}</div>`;
+      <div class="art">${monSvg(m.id)}</div><span class="lvtag l${m.lvl}">${stars(m.lvl)}</span><span class="ki num"></span><span class="dm num"></span><div class="cd"><div></div></div></div>` : `<div class="bmon none"></div>`; }).join('')}</div>`;
   return `<div class="bside ${isOpp ? 'opp' : 'me'}">${isOpp ? head + hp + chips + mons : mons + chips + hp + head}</div>`;
 }
 function vsRow(snap) { return `<div class="vs-row">${snap.team.map(m => m ? `<div class="vs-m" style="${dimStyle(MON[m.id].type)}">${monSvg(m.id)}</div>` : '<div class="vs-m none"></div>').join('')}</div>`; }
@@ -1131,6 +1141,7 @@ function showResult() {
     ${rkLine}
     ${b.res.gains[0].some(g => g > 0) ? `<div class="gains">${b.res.gains[0].map((g, i) => g > 0 ? `<span>${MON[b.me.team[i].id].name} +${Math.round(g * 100) / 100} dmg</span>` : '').join('')}</div>` : ''}
     ${s.grew ? `<div class="sub">${esc(s.grew)}</div>` : ''}
+    ${s.wish ? `<div class="r-close near"><b>WISHBONE!</b> It snapped and saved your life.</div>` : ''}
     ${s.salvage ? `<div class="sub">🪙 Salvage +${s.salvage} gold</div>` : ''}${s.egg ? `<div class="sub">🥚 Trinkets +${s.egg} gold for the win</div>` : ''}
     ${reportHtml()}
     <button class="hidebtn" data-act="hideresult">Hide to inspect the battle</button>

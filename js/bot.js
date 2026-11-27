@@ -1,7 +1,7 @@
 // Bot players: used to build the snapshot library and for balance simulations.
 // Deliberately imperfect: they like favourite types, reroll a set amount and arrange simply.
-import { MON, TYPES, TIER_POWER, LV_POWER, ECHO_KEYS, RULES, TRINKET, isBattleTrinket, price, TRIGGERS, AURAS, trinketPrice } from './data.js?v=0.7.5';
-import * as R from './run.js?v=0.7.5';
+import { MON, TYPES, TIER_POWER, LV_POWER, ECHO_KEYS, RULES, TRINKET, isBattleTrinket, price, TRIGGERS, AURAS, trinketPrice } from './data.js?v=0.7.6';
+import * as R from './run.js?v=0.7.6';
 
 const isSupport = (id) => MON[id].role === 'support' || MON[id].role === 'enabler';
 
@@ -20,7 +20,8 @@ function offerValue(run, prof, mon) {
   if (prof.know && prof.know[mon.id]) v *= prof.know[mon.id];
   const copies = R.owned(run).filter(o => o.m.id === mon.id && o.m.lvl === 1).length;
   const l2 = R.owned(run).some(o => o.m.id === mon.id && o.m.lvl === 2);
-  v *= 1 + copies * 0.55 + (l2 ? 0.3 : 0);
+  const big = R.owned(run).some(o => o.m.id === mon.id && o.m.lvl >= 3); // feeds a level 3+ being
+  v *= 1 + copies * 0.55 + (l2 ? 0.3 : 0) + (big ? 0.6 : 0);
   if (prof.favs.includes(def.type)) v *= 1 + prof.favBias;
   return v;
 }
@@ -133,7 +134,7 @@ export function botTrinkets(run, r, prof) {
     const score = (id) => {
       const t = TRINKET[id];
       let v = t.tier + r() * 1.5;
-      if (id.startsWith('charm_')) v += (counts[id.slice(6)] || 0) * 0.6 - 1;
+      if (id.startsWith('relic_')) v += (counts[id.slice(6)] || 0) * 0.6 - 1;
       if (!isBattleTrinket(id)) v -= run.day > 6 ? 1.5 : 0.3;
       return v;
     };
