@@ -1,5 +1,5 @@
 // Pocketomon — game data. All numbers are first-pass and tuned by tools/gen.mjs.
-export const VERSION = '0.7';
+export const VERSION = '0.7.5';
 
 export const RULES = {
   battleSeconds: 30,       // regular time
@@ -537,6 +537,17 @@ export function trinketBonus(ids) {
 export const BOT_NAMES = ['Ash Tray', 'Misty Window', 'Brock Lee', 'Gary Oakley', 'Professor Elm Street', 'Nurse Jolene', 'Team Rocket Science', 'Lass Vegas', 'Youngster Joey', 'Bug Catcher Bob', 'Hiker Mike', 'Swimmer Sue', 'Picnicker Pam', 'Cool Trainer Kai', 'Ace Ventura', 'Super Nerd Ned', 'Fisher Price', 'Biker Bart', 'Gentleman Jim', 'Beauty Bella', 'Psychic Sam', 'Blackbelt Bo', 'Juggler Jules', 'Rancher Rita', 'Tamer Tina', 'Ranger Rick', 'Burglar Barry', 'Scientist Sid', 'Sailor Sal', 'Camper Cam', 'Dragon Tamer Dot', 'Old Man Pete', 'Twin Tia & Tea', 'Cue Ball Carl', 'Rocker Roxy', 'Medium Maud', 'Channeler Chan', 'Bird Keeper Birdie', 'Artist Arturo', 'Collector Colin'];
 
 export const CHANGELOG = [
+  { v: '0.7.5', date: '2026-11-26', notes: [
+    'The "Rift" presentation update. Same rules, same beings, brand new look: a black rift with every card a window into its dimension, a poster font, and line icons and dimension sigils in place of emoji.',
+    'Battles show who did what: every hit beams from the being that cast it into the enemy HP bar, with the number where it lands. Gold links show which ally set off a trigger. Each being shows the damage it has dealt so far.',
+    'CHAIN counter: casts and triggers that fire close together build a chain. Big hits shake the screen, HP bars drain with a white trail, and every fight ends with a K.O.',
+    'KO time: every win is graded S (under 6s), A, B, C or D, and your best KO is saved. Great teams win in seconds.',
+    'Sound! Every dimension has its own cast sound, and chains climb in pitch. Mute from the title or the menu.',
+    'Multidex: beings you own are caught for good, beings you meet are seen, the rest are silhouettes. New catches get a NEW DISCOVERY stamp.',
+    'A VS screen before each fight, a DAY card between days with your wins and lives, a "so close" note on narrow losses, and a battle history on the run summary.',
+    'The team label counts your beings per dimension (counts only: synergies stay secret).',
+    'Miss the old look? "Play classic v0.7" on the title screen. Both versions share your saved run.',
+  ] },
   { v: '0.7', date: '2026-11-26', notes: [
     'The multiverse update: the 11 types are gone. 100 new beings from 10 dimensions take their place: Fallen Earth, Martial Realm, Zodiac, Age of Giants, Elvenwood, Necro Machines, Junkverse, The Abyss, Dreamscape and Clockwork City. Every dimension is in every run.',
     'Each dimension has its own trick: Last Stand, Ki and Transformations, Zodiac Alignment, Hunters and Giants, archer volleys, Assimilate, Scrap, Pressure, Sleep and Confusion, and Clockwork tempo. Synergies are hidden: find them!',

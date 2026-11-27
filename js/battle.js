@@ -4,7 +4,7 @@
 // team is at 0 HP. Statuses tick once per second. Ties go to side A (the player).
 // v0.7: dimension mechanics (Ki, Alignment, tags, Assimilate, Scrap, Pressure, Sleep, Tempo) and
 // per-being damage/support tracking for the battle report.
-import { MON, TYPES, RULES, LV, ECHO_KEYS, fxValue, trinketBonus, TRIGGERS, AURAS, inZone } from './data.js?v=0.7';
+import { MON, TYPES, RULES, LV, ECHO_KEYS, fxValue, trinketBonus, TRIGGERS, AURAS, inZone } from './data.js?v=0.7.5';
 
 const DT = 0.1;
 const TPS = 10; // ticks per second
@@ -147,14 +147,15 @@ export function simulate(teamA, teamB, opts = {}) {
       }
       chain.add(u);
       const prev = actor; actor = u;
-      fireTrigger(u, data);
+      const src = data.unit || prev; // v0.7.5: who set this trigger off (for the trigger-link visual only)
+      fireTrigger(u, data, src && src.side === u.side && src !== u ? src.pos : undefined);
       actor = prev;
     }
     if (top) chain = null;
   }
-  function fireTrigger(u, data) {
+  function fireTrigger(u, data, from) {
     const own = S[u.side], foe = S[1 - u.side], d = u.trig.do;
-    ev({ k: 'trig', s: u.side, pos: u.pos });
+    ev({ k: 'trig', s: u.side, pos: u.pos, from });
     if (d.cast) { u.charge = 0; cast(u, 1, null, tNow); return; }
     if (d.multicast) { u.charge = 0; for (let k = 0; k < d.multicast; k++) cast(u, 1, null, tNow); return; }
     if (d.plus) { const g = d.plus * u.lvl; u.plus += g; u.gain += g; return; } // permanent: written back to the run after battle

@@ -3,9 +3,9 @@
 // style decides how they are painted (comic halftone, manga ink, starlight, woodcut, watercolor,
 // chrome & neon, crayon sticker, bioluminescence, pastel blur, blueprint). Each portrait is cached
 // and served as an <img> so its filters are only rendered once.
-import { MON } from './data.js?v=0.7';
-import { makeRng, hash } from './rng.js?v=0.7';
-import { SPECS, HAND } from './artspecs.js?v=0.7';
+import { MON } from './data.js?v=0.7.5';
+import { makeRng, hash } from './rng.js?v=0.7.5';
+import { SPECS, HAND } from './artspecs.js?v=0.7.5';
 
 const f1 = (n) => Math.round(n * 10) / 10;
 const cache = new Map();
