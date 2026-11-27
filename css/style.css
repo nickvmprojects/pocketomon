@@ -466,3 +466,48 @@ button.primary { background: linear-gradient(#d6365c, #a92247); border-color: #f
 .sb.hit { background: #c22a46; }
 .sb.nerf { color: #fff; }
 .goldpill { background: linear-gradient(#d6365c, #a92247); }
+
+/* ---------------- v0.7: multiverse ---------------- */
+:root { --num: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; }
+/* clear font for every small number (prices, tiers, levels, stats, HP, gold) */
+.price, .lvtag, .sb, .hptxt, .tierpill, .goldpill, .tb-r span, .schip, .num, .ttier, .infobar span, .desc b, .chip b, .d-meta span, .dbadge, .ki { font-family: var(--num); font-variant-numeric: tabular-nums; letter-spacing: 0; }
+.tierpill, .lvtag, .price, .sb { font-weight: 800; }
+.mon-img { width: 100%; height: 100%; object-fit: contain; display: block; border-radius: 8px; user-select: none; -webkit-user-drag: none; pointer-events: none; }
+.card .art .mon-img, .bmon .art .mon-img { animation: none; }
+.card .art { inset: 22px 4px 30px; }
+.zone .card.small .art { inset: 18px 3px 3px; }
+.parade div { width: 56px; height: 56px; }
+.parade .mon-img { border-radius: 10px; box-shadow: 0 2px 6px #0008; }
+.d-art { width: 96px; height: 96px; background: none; }
+.d-art .mon-img { border-radius: 12px; box-shadow: 0 2px 8px #0009; }
+.c-mon .mon-img { border-radius: 6px; }
+.bside.opp .bmon .art { transform: none; }
+.desc { font-size: 13.5px; line-height: 1.45; margin: 6px 0; }
+.desc b { color: #fff; }
+.kw { color: #ffd54a !important; text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; }
+.kwpop { position: fixed; z-index: 100; background: #1b1f3e; border: 2px solid #ffd54a; border-radius: 10px; padding: 8px 10px; font-size: 13px; line-height: 1.4; color: #eef; box-shadow: 0 6px 20px #000a; }
+.kwpop b { color: #ffd54a; display: block; margin-bottom: 2px; }
+.rolechip, .tagchip { display: inline-block; font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 7px; background: #2a2f58; color: #dde; }
+.rolechip.r-dmg { background: #7a1e30; color: #fff; } .rolechip.r-carry { background: #8a4a10; color: #fff; }
+.rolechip.r-support { background: #1e5a34; color: #fff; } .rolechip.r-enabler { background: #1e3e7a; color: #fff; }
+.bmon.trans { box-shadow: 0 0 0 2px #ffd54a, 0 0 12px #ff8a3d; }
+.bmon .ki { position: absolute; top: 2px; right: 4px; font-size: 10.5px; font-weight: 800; color: #ffd0a0; text-shadow: 0 1px 0 #000, 0 0 3px #000; z-index: 2; }
+.dbadge { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); background: #c22a46; color: #fff; font-size: 12px; font-weight: 800; padding: 0 6px; border-radius: 8px; border: 1.5px solid #fff8; z-index: 3; }
+.report { margin: 8px 0 4px; text-align: left; }
+.rtabs { display: flex; gap: 6px; margin-bottom: 6px; }
+.rtabs button { flex: 1; padding: 5px 0; font-size: 13px; border-radius: 8px; }
+.rtabs button.sel { background: #ffd54a; color: #1b1424; border-color: #ffd54a; }
+.rrow { display: flex; align-items: center; gap: 6px; padding: 2px 4px; border-radius: 8px; }
+.rrow.mvp { background: #ffd54a22; box-shadow: inset 0 0 0 1.5px #ffd54a; }
+.rart { width: 30px; height: 30px; flex: none; }
+.rmid { flex: 1; min-width: 0; }
+.rname { font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mvptag { background: #ffd54a; color: #1b1424; font-size: 10px; font-weight: 900; padding: 0 4px; border-radius: 5px; }
+.rbar { position: relative; height: 11px; background: #0b0e20; border-radius: 6px; margin-top: 2px; }
+.rbar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 6px; }
+.rbar.dmg i { background: #e0435f; } .rbar.sup i { background: #3fbf6a; }
+.rbar span { position: absolute; right: 4px; top: -2px; font-size: 10.5px; font-weight: 800; text-shadow: 0 1px 1px #000; }
+.rkey { font-size: 10.5px; color: #aab; margin-top: 4px; } .rkey .kd { color: #e0435f; } .rkey .ks { color: #3fbf6a; }
+.r-box { max-height: calc(100dvh - 20px); overflow-y: auto; padding: 12px; gap: 5px; }
+.row5 .card .art { inset: 3px; } .row5 .card .nm { display: none; } .row5 .card .c-top { z-index: 3; } .row5 .card .marks { display: none; }
+.row5 > .card { min-width: 0; overflow: hidden; }

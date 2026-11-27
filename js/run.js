@@ -3,9 +3,9 @@
 import {
   RULES, MON, MONS, TYPE_KEYS, AVATARS, AVATAR, TRINKETS, TRINKET, isBattleTrinket, trinketBonus, TRIGGERS, inZone, trinketPrice,
   teamHp, income, price, sellPerCopy, tierWeights, maxTier, TIER_POWER, LV_POWER, fxValue,
-} from './data.js?v=0.6b';
-import { makeRng, hash } from './rng.js?v=0.6b';
-import { rateTeam } from './battle.js?v=0.6b';
+} from './data.js?v=0.7';
+import { makeRng, hash } from './rng.js?v=0.7';
+import { rateTeam } from './battle.js?v=0.7';
 
 export function rngOf(run) { const r = makeRng(run.rs); return r; }
 function save(run, r) { run.rs = r.state(); }
@@ -18,7 +18,7 @@ export const offerPrice = (run, def) => Math.max(1, price(def) - (run.sale ? 5 :
 export function newRun(mode, seed = (Date.now() ^ Math.floor(Math.random() * 1e9)) >>> 0) {
   const r = makeRng(seed);
   const run = {
-    v: 2, mode, seed, rs: 0, day: 1, gold: 0, lives: RULES.startLives, wins: 0, losses: 0,
+    v: 3, mode, seed, rs: 0, day: 1, gold: 0, lives: RULES.startLives, wins: 0, losses: 0,
     avatar: null, trinkets: [], types: r.shuffle(TYPE_KEYS).slice(0, RULES.typesPerRun),
     team: Array(RULES.teamSlots).fill(null), bench: Array(RULES.benchSlots).fill(null), shop: [],
     freeRerolls: 0, rerollBank: 0, hpBonus: 0, sale: false, uid: 1, trinketQueue: [],
@@ -436,12 +436,12 @@ export function teamPower(team) {
   return Math.round(p);
 }
 export const runPower = (run) => teamPower(run.team);
-export const runRating = (run) => rateTeam(battleTeamFromSnap({ day: run.day, hpBonus: run.hpBonus, avatar: run.avatar, trinkets: run.trinkets.filter(t => isBattleTrinket(t)), team: run.team })).rating;
+export const runRating = (run) => rateTeam(battleTeamFromSnap({ day: run.day, hpBonus: run.hpBonus, avatar: run.avatar, trinkets: run.trinkets.filter(t => isBattleTrinket(t)), ntrink: run.trinkets.length, team: run.team })).rating;
 
 export function snapshot(run, name) {
   const s = {
     name, day: run.day, wins: run.wins, losses: run.losses, avatar: run.avatar,
-    trinkets: run.trinkets.filter(t => isBattleTrinket(t)), hpBonus: run.hpBonus,
+    trinkets: run.trinkets.filter(t => isBattleTrinket(t)), ntrink: run.trinkets.length, hpBonus: run.hpBonus,
     team: run.team.map(m => m ? { id: m.id, lvl: m.lvl, atk: m.atk, pow: m.pow, plus: m.plus || 0 } : null),
     power: runPower(run),
   };
@@ -449,7 +449,7 @@ export function snapshot(run, name) {
   return s;
 }
 export function battleTeamFromSnap(s) {
-  return { mons: s.team, maxHp: maxHpFor(s.day, s.hpBonus, s.avatar, s.trinkets), trinkets: s.trinkets, avatar: s.avatar };
+  return { mons: s.team, maxHp: maxHpFor(s.day, s.hpBonus, s.avatar, s.trinkets), trinkets: s.trinkets, ntrink: s.ntrink ?? s.trinkets.length, avatar: s.avatar };
 }
 
 export function salvageGold(run) {

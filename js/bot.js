@@ -1,9 +1,9 @@
 // Bot players: used to build the snapshot library and for balance simulations.
 // Deliberately imperfect: they like favourite types, reroll a set amount and arrange simply.
-import { MON, TYPES, TIER_POWER, LV_POWER, ECHO_KEYS, RULES, TRINKET, isBattleTrinket, price, TRIGGERS, AURAS, trinketPrice } from './data.js?v=0.6b';
-import * as R from './run.js?v=0.6b';
+import { MON, TYPES, TIER_POWER, LV_POWER, ECHO_KEYS, RULES, TRINKET, isBattleTrinket, price, TRIGGERS, AURAS, trinketPrice } from './data.js?v=0.7';
+import * as R from './run.js?v=0.7';
 
-const SUPPORT_FRONT = ['rock', 'electric', 'grass', 'psychic', 'ice'];
+const isSupport = (id) => MON[id].role === 'support' || MON[id].role === 'enabler';
 
 // know: optional { monId: multiplier } learned from a previous simulation (informed bots)
 export function makeProfile(r, run, know = null) {
@@ -103,8 +103,8 @@ export function arrange(run, prof) {
   const rest = all.slice(RULES.teamSlots);
   let ordered;
   if (prof.order === 'support') {
-    const sup = team.filter(m => SUPPORT_FRONT.includes(MON[m.id].type));
-    const other = team.filter(m => !SUPPORT_FRONT.includes(MON[m.id].type));
+    const sup = team.filter(m => isSupport(m.id));
+    const other = team.filter(m => !isSupport(m.id));
     ordered = [...sup, ...other];
   } else ordered = team.slice();
   // grid: slots 0-2 front row, 3-5 back row. Echo mons and "when the ally in front casts" mons go

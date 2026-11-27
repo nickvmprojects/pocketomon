@@ -1,5 +1,5 @@
 // Pocketomon — game data. All numbers are first-pass and tuned by tools/gen.mjs.
-export const VERSION = '0.6b';
+export const VERSION = '0.7';
 
 export const RULES = {
   battleSeconds: 30,       // regular time
@@ -11,12 +11,12 @@ export const RULES = {
   startLives: 5,
   winsToChampion: 10,
   rerollCost: 3,
-  typesPerRun: 5,
+  typesPerRun: 10,        // v0.7: every dimension is in every run
   copyBias: 0.2,           // chance a shop slot shows a copy of a mon you own
   shieldCap: 0.5,          // shield can't exceed 50% of max HP
 };
 
-export const teamHp = (day) => 200 + day * 100;
+export const teamHp = (day) => 150 + 50 * day + 12 * day * day; // curve B: 212, 298, 408, ... 1850 on day 10
 export const income = (day) => Math.min(30 + 10 * day, 90);   // 40, 50, ... capped at 90 from day 6
 // Shop price = 10 x tier, then -5 / 0 / +5 by how strong the mon is (COST_ADJ), so prices end in 0 or 5
 export const price = (def) => 10 * def.tier + (COST_ADJ[def.id] || 0);
@@ -48,177 +48,175 @@ export const LV = {
 };
 // flat amounts (hits, burn, heal, shield, poison, doom, regen) are compressed by tier so
 // late-game fights don't end in 5 seconds while day 1 fights still finish in time
-export const TIER_SCALE = [0, 1.6, 1.35, 1.1, 0.95, 0.85];
+export const TIER_SCALE = [0, 1, 1, 1, 1, 1]; // v0.7: tier numbers are written directly in the roster
+// damage tuning by tier (hits, burn, poison, doom): keeps fights short without touching heals and shields
+export const DMG_SCALE = [0, 1.8, 1.75, 1.9, 2.05, 2.2];
+const DMG_KEYS = ['burn', 'poison', 'doom'];
 // def = the mon definition (tier + id for TUNE)
 export function fxValue(key, base, def, lvl, pow = 1) {
   const sc = FX[key] ? FX[key].scale : 'fx';
   if (sc === 'lvl') return base * lvl;
+  if (sc === 'flat') return base;
   const lv = sc === 'dmg' ? LV.dmg : sc === 'sec' ? LV.sec : sc === 'pct' ? LV.pct : LV.fx;
   const flat = sc === 'dmg' || sc === 'fx';
-  return base * lv[lvl] * pow * (flat ? TIER_SCALE[def.tier] : 1) * (TUNE[def.id] || 1);
+  const dk = sc === 'dmg' || DMG_KEYS.includes(key) ? DMG_SCALE[def.tier] : 1;
+  return base * lv[lvl] * pow * (flat ? TIER_SCALE[def.tier] : 1) * dk * (TUNE[def.id] || 1);
 }
 export const TIER_POWER = [0, 10, 14, 19, 25, 32];
 export const LV_POWER = [0, 1, 1.8, 2.8];
 
+// ---- v0.7 multiverse: 10 dimensions replace types. The `type` field on a being holds its dimension key.
 export const TYPES = {
-  fire:     { name: 'Fire',     icon: '🔥', color: '#ff6a3d', dark: '#8f2a12', mech: 'Burn',    blurb: 'Burn stacks hit every second and fade by 30% each tick.' },
-  water:    { name: 'Water',    icon: '💧', color: '#3fa9ff', dark: '#14548f', mech: 'Heal',    blurb: 'Heals your team HP and washes off burn and poison.' },
-  grass:    { name: 'Grass',    icon: '🌿', color: '#5fd068', dark: '#22712c', mech: 'Growth',  blurb: 'Growth permanently raises your whole team\'s damage for the battle.' },
-  electric: { name: 'Electric', icon: '⚡', color: '#ffd83d', dark: '#8f7410', mech: 'Haste',   blurb: 'Haste speeds up your team\'s cooldowns; Charge pushes allies\' timers forward.' },
-  ice:      { name: 'Ice',      icon: '❄️', color: '#8fe8ff', dark: '#2d7d93', mech: 'Chill',   blurb: 'Chill slows the enemy team; Freeze pushes enemy timers back.' },
-  rock:     { name: 'Rock',     icon: '🪨', color: '#c49a6c', dark: '#6b4b2a', mech: 'Shield',  blurb: 'Shield soaks direct hits and burn (not poison or doom).' },
-  poison:   { name: 'Poison',   icon: '☠️', color: '#b05cff', dark: '#5a2096', mech: 'Toxin',   blurb: 'Poison stacks never fade and pierce shields. Slow, then deadly.' },
-  psychic:  { name: 'Psychic',  icon: '🔮', color: '#ff6fc8', dark: '#93266b', mech: 'Mind',    blurb: 'Expose makes the enemy take more damage (all kinds); Weaken makes them deal less.' },
-  ghost:    { name: 'Ghost',    icon: '👻', color: '#8a8cff', dark: '#33358f', mech: 'Doom',    blurb: 'Doom piles up and detonates 5s after it starts, piercing shields.' },
-  junk:     { name: 'Junk',     icon: '🗑️', color: '#9aa37a', dark: '#4b5233', mech: 'Scrap',   blurb: 'Scrap piles make every Junk mon hit harder. Some salvage gold after battle.' },
-  sound:    { name: 'Sound',    icon: '🎵', color: '#ffa94d', dark: '#8f4f10', mech: 'Echo',    blurb: 'Echo repeats the move of the ally in front (or behind) at partial power. If there is none, an adjacent ally.' },
+  fallen:  { name: 'Fallen Earth',   icon: '🛸', color: '#9be04a', dark: '#3d5a14', mech: 'Last Stand', blurb: 'Humans and stolen alien tech after the invasion. Stronger the closer your team is to falling.' },
+  martial: { name: 'Martial Realm',  icon: '🥋', color: '#ff5a4a', dark: '#8a1e14', mech: 'Ki',         blurb: 'Fighters gain Ki with every cast. At 5 Ki they Transform: +50% ATK and POW for 6s.' },
+  zodiac:  { name: 'Zodiac',         icon: '✨', color: '#ffc94a', dark: '#6e4a0a', mech: 'Alignment',  blurb: 'Living stars of the four elements. Next to a being of the same element they are Aligned: +20% ATK and POW.' },
+  giants:  { name: 'Age of Giants',  icon: '🦖', color: '#d9a066', dark: '#6b3f16', mech: 'Hunt',       blurb: 'Hunters of the 1500s and the giant beasts they chase. Hunters get stronger with Giants on the team.' },
+  elven:   { name: 'Elvenwood',      icon: '🏹', color: '#a98cff', dark: '#3e2a8a', mech: 'Harmony',    blurb: 'Moonlit night elves and forest spirits: archer volleys, healing and growth.' },
+  necro:   { name: 'Necro Machines', icon: '🤖', color: '#ff2a4a', dark: '#6a0a1a', mech: 'Assimilate', blurb: 'Machines of terrible power that drain the strength of their own allies.' },
+  junk:    { name: 'Junkverse',      icon: '🗑️', color: '#c9a878', dark: '#5a4426', mech: 'Scrap',      blurb: 'Scrap piles up during battle and makes every Junkverse being hit harder.' },
+  abyss:   { name: 'The Abyss',      icon: '🦑', color: '#3ff2ff', dark: '#0a4a5a', mech: 'Pressure',   blurb: 'Deep sea horrors. Pressure stacks on the enemy and never fades; some beings cash it in.' },
+  dream:   { name: 'Dreamscape',     icon: '🌙', color: '#ff9cd8', dark: '#7a2a6a', mech: 'Sleep',      blurb: 'Sleep, confusion and curses. Sleeping enemies lose time and take extra damage.' },
+  clock:   { name: 'Clockwork City', icon: '⚙️', color: '#6fb0ff', dark: '#1a4a8a', mech: 'Tempo',      blurb: 'Gears and springs: haste, charge, echoes and repeat casts.' },
 };
 export const TYPE_KEYS = Object.keys(TYPES);
+export const TAGS = { hunter: '🎯 Hunter', giant: '🦣 Giant', archer: '🏹 Archer' };
+export const ELEMENTS = { fire: '🔥 Fire', earth: '🪨 Earth', air: '🌪️ Air', water: '💧 Water', all: '🌈 Every element' };
+export const ROLES = { dmg: 'Damage', carry: 'Late carry', support: 'Support', enabler: 'Enabler' };
 
-// m(id, name, type, tier, cooldown, damage, effects, passives, flavor)
-// effects scale by level and POW roll. passives: start{...}, salvage, rebirth, regen
-const m = (id, name, type, tier, cd, dmg, fx = {}, pas = {}, flavor = '') => ({ id, name, type, tier, cd, dmg, fx, pas, flavor });
+// m(id, name, dimension, tier, cooldown, hit, effects, passives, role, text, flavor, extra)
+// text: in-game description. {key} = that number at the being's level and rolls, **Word** = keyword with a popup.
+// extra: tags [hunter|giant|archer], el (zodiac element), hits (split hit), lowX2, vsChill, vsBurn, immune, transTwice
+const m = (id, name, type, tier, cd, dmg, fx = {}, pas = {}, role = 'dmg', text = '', flavor = '', x = {}) => ({ id, name, type, tier, cd, dmg, fx, pas, role, text, flavor, x });
 
 export const MONS = [
-  // ---------------- FIRE ----------------
-  m('emberpup', 'Emberpup', 'fire', 1, 2.5, 4, { burn: 1.6 }, {}, 'Wags so hard its tail sets the rug on fire.'),
-  m('cindermite', 'Cindermite', 'fire', 1, 1.6, 2, { burn: 1.2 }, {}, 'A spark with legs. Many legs.'),
-  m('kilnkit', 'Kilnkit', 'fire', 2, 3, 7, { burn: 3 }, {}, 'Sleeps inside pottery ovens. Bakes its own snacks.'),
-  m('flarebat', 'Flarebat', 'fire', 2, 2, 3, { burn: 2.6 }, {}, 'Hangs upside down from chimneys.'),
-  m('pyrrhino', 'Pyrrhino', 'fire', 3, 4, 16, { burn: 4 }, {}, 'Charges first, cools down never.'),
-  m('wickwisp', 'Wickwisp', 'fire', 3, 2.2, 3, { burn: 3, stoke: 20 }, {}, 'Fans existing flames into bonfires.'),
-  m('magmaw', 'Magmaw', 'fire', 4, 4.5, 26, { burn: 8 }, {}, 'Its burps are classified as eruptions.'),
-  m('sunmoth', 'Sunmoth', 'fire', 4, 3, 10, { burn: 7 }, { start: { burn: 14 } }, 'Opens the battle by flying into the enemy\'s face.'),
-  m('infernodon', 'Infernodon', 'fire', 5, 4.5, 48, { burn: 14 }, {}, 'Extinct twice. Came back angrier.'),
-  m('phoenyx', 'Phoenyx', 'fire', 5, 3.5, 14, { burn: 10 }, { rebirth: 15 }, 'Once per battle, rises from your team\'s ashes.'),
+  // ---------------- FALLEN EARTH ----------------
+  m('skulldrone', 'Scout Skull-Drone', 'fallen', 1, 3, 18, {}, {}, 'dmg', 'Zaps for {dmg}.', 'Scans, targets, zaps. Repeat.'),
+  m('tinfoil', 'Tinfoil Tom', 'fallen', 1, 4, 4, { shield: 12 }, {}, 'support', 'Hits for {dmg} and gives a **Shield** of {shield}. Doubled while your team is under 50% HP.', 'Knew they were coming. Nobody listened.', { lowX2: 1 }),
+  m('meowma', 'Meowma, Cat Lady', 'fallen', 2, 4, 24, { expose: 12 }, {}, 'dmg', 'Stolen ray gun: {dmg} and **Expose** {expose}%.', 'Eleven cats and one alien blaster.'),
+  m('rosa', 'Bunker Medic Rosa', 'fallen', 2, 5, 6, { heal: 40 }, {}, 'support', 'Hits for {dmg}. **Heals** {heal}.', 'Patches people up with duct tape and hope.'),
+  m('pyra', 'Pyra, Fire Fairy', 'fallen', 3, 4, 12, { burn: 12 }, {}, 'dmg', 'Hits for {dmg} and **Burn** {burn}. +50% against **Chilled** enemies.', 'Half of an alien experiment. The hot half.', { vsChill: 50 }),
+  m('frost', 'Frost, Ice Fairy', 'fallen', 3, 5, 10, { chill: 16 }, {}, 'support', 'Hits for {dmg} and **Chill** {chill}%. Hits 25 harder against **Burning** enemies.', 'The other half. Never far from her sister.', { vsBurn: 25 }),
+  m('grimhorn', 'Grimhorn, Goat Wizard', 'fallen', 4, 6, 12, { haste: 12 }, {}, 'enabler', 'Hits for {dmg} and **Haste** {haste}%. Doubled while your team is under 50% HP.', 'Learned magic from an alien textbook. Ate the textbook.', { lowX2: 1 }),
+  m('skarr', 'Skarr, Lizard Man', 'fallen', 4, 5, 40, { lastStand: 100 }, {}, 'carry', 'Claw for {dmg}. **Last Stand**: up to +{lastStand}% damage as your team loses HP.', 'Mutated, furious, and on your side. Mostly.'),
+  m('brick', 'Brick, Last Champion & Sarge', 'fallen', 5, 8, 36, {}, { rally: { heal: 25, haste: 40 } }, 'enabler', 'Punch for {dmg}. Once, when your team drops under 30%: heals 25% HP and **Haste** 40%.', 'The strongest human alive. Sarge the cat is in charge.'),
+  m('mothership', 'Hijacked Mothership', 'fallen', 5, 8, 20, { overclock: 1 }, {}, 'enabler', 'Beam for {dmg}. **Overclock**: every ally\'s next cast happens twice.', 'Under new management.'),
 
-  // ---------------- WATER ----------------
-  m('puddlefin', 'Puddlefin', 'water', 1, 2.5, 3, { heal: 6 }, {}, 'Lives in the puddle you just stepped in.'),
-  m('bubblot', 'Bubblot', 'water', 1, 3, 2, { heal: 5, cleanse: 3 }, {}, 'Blows soap bubbles. Somehow they heal.'),
-  m('ripplet', 'Ripplet', 'water', 2, 2.8, 6, { heal: 9 }, {}, 'Skips across ponds like a stone. Proud of it.'),
-  m('mistle', 'Mistle', 'water', 2, 3.5, 2, { heal: 16 }, {}, 'A walking spa day.'),
-  m('tidalon', 'Tidalon', 'water', 3, 3.5, 13, { heal: 12 }, {}, 'Brings the tide in, and also a fist.'),
-  m('corallis', 'Corallis', 'water', 3, 3, 4, { heal: 13, cleanse: 5 }, {}, 'A reef that decided to go for a walk.'),
-  m('krakenling', 'Krakenling', 'water', 4, 4, 24, { heal: 21 }, {}, 'Eight arms, eight hugs, eight punches.'),
-  m('rainbeau', 'Rainbeau', 'water', 4, 3, 6, { heal: 26, lowheal: 50 }, {}, 'Shows up when things look darkest.'),
-  m('leviathorn', 'Leviathorn', 'water', 5, 4, 44, { heal: 38 }, {}, 'Ships go around it. Islands too.'),
-  m('aquarion', 'Aquarion', 'water', 5, 4, 16, { heal: 30, cleanse: 12 }, { regen: 7 }, 'Every battlefield becomes a spring.'),
+  // ---------------- MARTIAL REALM (every Martial being gains 1 Ki per cast) ----------------
+  m('pip', 'Tiny Fist Pip', 'martial', 1, 3, 16, {}, {}, 'dmg', 'Punch for {dmg}. Gains 1 **Ki** per cast.', 'Still in diapers. Already a black belt.'),
+  m('bao', 'Iron Bao, Dojo Dummy', 'martial', 1, 4, 4, { shield: 12, ki: 0.5 }, {}, 'support', 'Hits for {dmg}, **Shield** {shield}, and all allies gain {ki} **Ki**.', 'Has taken a million punches. Still smiling.'),
+  m('kite', 'Captain Kite', 'martial', 2, 3.5, 24, {}, {}, 'dmg', 'Caped dash for {dmg}. While **Transformed**, hits twice.', 'The cape does nothing. He insists it does.', { transTwice: 1 }),
+  m('sora', 'Monk Sora', 'martial', 2, 5, 4, { heal: 20, ki: 1 }, {}, 'support', 'Hits for {dmg}, **Heals** {heal}, and all allies gain {ki} **Ki**.', 'Meditates mid-battle. Somehow it helps.'),
+  m('rhea', 'Thunder-Step Rhea', 'martial', 3, 4, 15, { ki: 1 }, {}, 'enabler', 'Palm strike hits twice for {dmg}. All allies gain {ki} **Ki**.', 'Arrives before the thunder does.', { hits: 2 }),
+  m('gorran', 'Stone Sage Gorran', 'martial', 3, 6, 8, { weaken: 20 }, {}, 'support', 'Hits for {dmg} and **Weaken** {weaken}%.', 'Has not moved in forty years. Then he did.'),
+  m('ashi', 'Mirror Stance Ashi', 'martial', 4, 6, 10, { copyLast: 60 }, {}, 'enabler', 'Hits for {dmg}, then copies the last ally cast at {copyLast}% power.', 'Fights in your style. Better than you.'),
+  m('hoshi', 'Old Master Hoshi', 'martial', 4, 7, 14, { ki: 1 }, { train: 5 }, 'enabler', 'Hits for {dmg} and all allies gain {ki} **Ki**. Each time an ally **Transforms**, it keeps +5% ATK and POW for the battle.', 'Training never ends. Not even mid-fight.'),
+  m('willow', 'Grandmaster Willow', 'martial', 5, 8, 24, { ki: 1 }, { start: { ki: 3 }, kiLong: 1 }, 'enabler', 'Hits for {dmg} and all allies gain {ki} **Ki**. All allies start with 3 Ki, and **Transformations** last twice as long.', 'Bends like a willow. Hits like a falling tree.'),
+  m('ryo', 'Ascended Ryo', 'martial', 5, 6, 30, { kinova: 4 }, {}, 'carry', '**Ki** Nova: {dmg}, +{kinova} for every Ki your team gained this battle.', 'Went past the limit and kept going.'),
 
-  // ---------------- GRASS ----------------
-  m('sproutle', 'Sproutle', 'grass', 1, 2.5, 3, { growth: 3 }, {}, 'Cheers the team on with tiny leaf pom-poms.'),
-  m('thornbit', 'Thornbit', 'grass', 1, 1.8, 3, { selfgrow: 10 }, {}, 'Gets pricklier every time it pokes.'),
-  m('leaflynx', 'Leaflynx', 'grass', 2, 2.5, 6, { growth: 4 }, {}, 'Camouflaged as a bush. A suspicious bush.'),
-  m('budgeon', 'Budgeon', 'grass', 2, 3, 4, { growth: 6 }, {}, 'A pigeon that photosynthesizes.'),
-  m('oakhorn', 'Oakhorn', 'grass', 3, 4, 14, { growth: 6 }, {}, 'Its antlers have their own squirrels.'),
-  m('lashvine', 'Lashvine', 'grass', 3, 1.8, 5, { selfgrow: 16 }, {}, 'Whips faster and harder until it\'s a blur.'),
-  m('petalisk', 'Petalisk', 'grass', 4, 3, 8, { growth: 10 }, {}, 'One glance and your team blooms.'),
-  m('barkodile', 'Barkodile', 'grass', 4, 4.5, 24, { growth: 6, shield: 8 }, {}, 'Bark worse than its bite. Both are bad.'),
-  m('elderoot', 'Elderoot', 'grass', 5, 5, 30, { growth: 15 }, {}, 'Older than the map. Remembers when it was a seed.'),
-  m('verdragon', 'Verdragon', 'grass', 5, 3.5, 16, { growth: 8 }, { start: { growth: 15 } }, 'Where it lands, meadows sprout.'),
+  // ---------------- ZODIAC (Aligned: +20% ATK and POW next to a same-element being) ----------------
+  m('aries', 'Aries Ember', 'zodiac', 1, 3, 15, { frontRow: 30 }, {}, 'dmg', 'Flare for {dmg}, +{frontRow}% in the front row.', 'A newborn star with a very short fuse.', { el: 'fire' }),
+  m('pisces', 'Pisces Tidelight', 'zodiac', 1, 4, 4, { heal: 14, cleanse: 8 }, {}, 'support', 'Hits for {dmg}, **Heals** {heal} and **Cleanses** {cleanse}.', 'Two glowing fish orbiting a puddle of starlight.', { el: 'water' }),
+  m('gemini', 'Gemini Twin Comets', 'zodiac', 2, 4, 14, {}, {}, 'dmg', 'Two comets hit for {dmg} each.', 'They finish each other\'s orbits.', { el: 'air', hits: 2 }),
+  m('taurus', 'Taurus Planetoid', 'zodiac', 2, 5, 6, { shield: 30 }, {}, 'support', 'Hits for {dmg} and gives a **Shield** of {shield}.', 'A small planet with horns. Very stubborn gravity.', { el: 'earth' }),
+  m('scorpio', 'Scorpio Pulsar', 'zodiac', 3, 4, 8, { poison: 12 }, {}, 'dmg', 'Hits for {dmg} and **Poison** {poison}.', 'Blinks once a second. Stings on every blink.', { el: 'water' }),
+  m('libra', 'Libra Binary Star', 'zodiac', 3, 6, 8, { balance: 3 }, {}, 'support', 'Hits for {dmg}. If the enemy has more HP% than you, deals {balance} per % of the gap; otherwise heals that much.', 'Two stars keeping each other honest.', { el: 'air' }),
+  m('sagittarius', 'Sagittarius Meteorbow', 'zodiac', 4, 6, 20, { perAlign: 20 }, {}, 'carry', 'Meteor for {dmg}, +{perAlign} for each **Aligned** pair on your team.', 'Its arrows arrive a few million years late. Worth it.', { el: 'fire' }),
+  m('virgo', 'Virgo Starseed', 'zodiac', 4, 6, 8, { growth: 6 }, {}, 'enabler', 'Hits for {dmg} and **Growth** {growth}%. Counts as every element for **Alignment**.', 'Plants stars the way others plant seeds.', { el: 'all' }),
+  m('leo', 'Leo Paragon', 'zodiac', 5, 8, 24, { shield: 20 }, { shieldCap: 75 }, 'enabler', 'Hits for {dmg} and gives a **Shield** of {shield}. Your **Shield** can reach 75% of team HP instead of 50%.', 'A sun that decided to wear a mane.', { el: 'fire' }),
+  m('ophiuchus', 'Ophiuchus, 13th Sign', 'zodiac', 5, 7, 20, { burst: 60 }, {}, 'carry', '**Cosmic Burst**: {dmg} plus {burst}% of your **Shield**, then the shield is used up.', 'The sign nobody talks about. It remembers.'),
 
-  // ---------------- ELECTRIC ----------------
-  m('zapling', 'Zapling', 'electric', 1, 2, 3, { haste: 3 }, {}, 'Plug it in and it does laps.'),
-  m('voltmouse', 'Voltmouse', 'electric', 1, 1.4, 3, { chargeNext: 0.4 }, {}, 'Chews cables. Passes the buzz along.'),
-  m('sparkoon', 'Sparkoon', 'electric', 2, 2.5, 6, { haste: 4 }, {}, 'Steals batteries from remotes.'),
-  m('dynamole', 'Dynamole', 'electric', 2, 3, 4, { charge: 0.35 }, {}, 'Digs tunnels that hum.'),
-  m('thunderam', 'Thunderam', 'electric', 3, 3.5, 14, { haste: 5 }, {}, 'Headbutts so hard it causes weather.'),
-  m('coilbee', 'Coilbee', 'electric', 3, 1.5, 4, { charge: 0.15 }, {}, 'Buzzes at 60 hertz.'),
-  m('stormlion', 'Stormlion', 'electric', 4, 3.5, 20, { haste: 8 }, {}, 'Its roar comes with a flash, then a boom.'),
-  m('teslug', 'Teslug', 'electric', 4, 3, 6, { charge: 0.35, haste: 3 }, {}, 'Slow. Except at conducting.'),
-  m('raijumbo', 'Raijumbo', 'electric', 5, 4, 34, { haste: 9 }, {}, 'An elephant-sized thunderstorm.'),
-  m('ampharaoh', 'Ampharaoh', 'electric', 5, 3, 14, { charge: 0.5 }, { start: { haste: 10 } }, 'Ancient ruler of the power grid.'),
+  // ---------------- AGE OF GIANTS ----------------
+  m('brann', 'Brann the Hunter', 'giants', 1, 3, 13, { perGiant: 5 }, {}, 'dmg', 'Shot for {dmg}, +{perGiant} for each **Giant** on your team.', 'Has hunted bigger. Has never hunted smaller.', { tags: ['hunter'] }),
+  m('ilse', 'Rope-Setter Ilse', 'giants', 1, 4, 6, { chill: 12 }, {}, 'support', 'Snare for {dmg} and **Chill** {chill}%.', 'Ties knots that hold mammoths.', { tags: ['hunter'] }),
+  m('bertha', 'Big Bertha, Giant Hen', 'giants', 2, 5, 8, { heal: 30 }, {}, 'support', 'Pecks for {dmg}, then lays an egg: **Heals** {heal}.', 'One egg feeds a village for a week.', { tags: ['giant'] }),
+  m('harpoon', 'Harpoon Crew', 'giants', 2, 4, 30, {}, {}, 'dmg', 'Harpoon for {dmg}.', 'Three hunters, one very large spear.', { tags: ['hunter'] }),
+  m('oldtusk', 'Old Tusk, Giant Mammoth', 'giants', 3, 6, 20, { shield: 35 }, {}, 'support', 'Stomp for {dmg} and a **Shield** of {shield}.', 'Every hunter knows him. None have caught him.', { tags: ['giant'] }),
+  m('mara', 'Beast Tamer Mara', 'giants', 3, 5, 12, {}, {}, 'enabler', 'Whip for {dmg}.', 'Speaks fluent mammoth.', { tags: ['hunter'] }),
+  m('dunemaw', 'Dune Maw, Sand Worm', 'giants', 4, 7, 40, { strip: 100 }, {}, 'enabler', 'Swallow: {dmg}, removes {strip}% of the enemy **Shield** and their **Growth** and **Haste**.', 'The desert is just its stomach lining.', { tags: ['giant'] }),
+  m('hale', 'Fort Captain Hale', 'giants', 4, 6, 8, { shield: 25, shieldPerHunter: 10 }, {}, 'support', 'Hits for {dmg} and a **Shield** of {shield}, +{shieldPerHunter} for each **Hunter** on your team.', 'Built the wall. Holds the wall.', { tags: ['hunter'] }),
+  m('rexalon', 'Rexalon, Dragon-Tyrant', 'giants', 5, 8, 70, { burn: 20 }, {}, 'carry', 'Firestorm for {dmg} and **Burn** {burn}.', 'Here be dragons. Specifically, this one.', { tags: ['giant'] }),
+  m('isolde', 'Hunt Queen Isolde', 'giants', 5, 8, 20, { expose: 35 }, {}, 'enabler', 'Marks the prey: {dmg} and **Expose** {expose}%.', 'Has a trophy wall the size of a cathedral.', { tags: ['hunter'] }),
 
-  // ---------------- ICE ----------------
-  m('frostkit', 'Frostkit', 'ice', 1, 2.5, 3, { chill: 4 }, {}, 'Its nose is always cold. Everything is.'),
-  m('snowpeck', 'Snowpeck', 'ice', 1, 3, 3, { freeze: 1.2 }, {}, 'Pecks the mon in front of it into an ice cube.'),
-  m('glaciub', 'Glaciub', 'ice', 2, 2.8, 6, { chill: 5 }, {}, 'A bear cub carved from a glacier.'),
-  m('flurrfox', 'Flurrfox', 'ice', 2, 2.5, 4, { freeze: 1.1 }, {}, 'Its tail is a tiny blizzard.'),
-  m('tuskfrost', 'Tuskfrost', 'ice', 3, 4, 15, { chill: 7 }, {}, 'Mammoth energy, in every sense.'),
-  m('shiverling', 'Shiverling', 'ice', 3, 3, 5, { freezeTop: 1.3 }, {}, 'Always freezes whoever is about to act.'),
-  m('blizzowl', 'Blizzowl', 'ice', 4, 3.5, 16, { chill: 6 }, {}, 'Silent wings, loud snowstorms.'),
-  m('crystalynx', 'Crystalynx', 'ice', 4, 3.5, 10, { freezeAll: 0.35 }, {}, 'Refracts time itself. Briefly.'),
-  m('glacierex', 'Glacierex', 'ice', 5, 5, 38, { chill: 9 }, {}, 'The last ice age was its nap.'),
-  m('borealis', 'Borealis', 'ice', 5, 4, 14, { freezeAll: 0.35 }, { start: { chill: 10 } }, 'The northern lights, with teeth.'),
+  // ---------------- ELVENWOOD ----------------
+  m('lirien', 'Lirien, Elf Archer', 'elven', 1, 3, 15, { volleyAdj: 100 }, {}, 'dmg', 'Arrow for {dmg}, +{volleyAdj}% for each adjacent **Archer**.', 'Never misses. Never lets you forget it.', { tags: ['archer'] }),
+  m('mosswhisper', 'Mosswhisper Sprite', 'elven', 1, 4, 4, { heal: 10, growth: 3 }, {}, 'support', 'Hits for {dmg}, **Heals** {heal} and **Growth** {growth}%.', 'Whispers to moss. The moss whispers back.'),
+  m('kaelen', 'Kaelen & Shade', 'elven', 2, 3.5, 25, {}, {}, 'dmg', 'Pounce for {dmg}. Immune to **Chill** and **Sleep**.', 'A night elf and a panther who never sleeps.', { immune: 1 }),
+  m('grovesinger', 'Grove Singer', 'elven', 2, 5, 4, { heal: 10 }, { regen: 4 }, 'support', 'Hits for {dmg} and **Heals** {heal}. Your team heals {regen} every second.', 'Sings the old songs. The trees hum along.'),
+  m('thornhoof', 'Thornhoof, Minotaur Druid', 'elven', 3, 6, 10, { chill: 12, heal: 30 }, {}, 'support', 'Roots for {dmg}: **Chill** {chill}% and **Heals** {heal}.', 'Gentle, unless you step on the flowers.'),
+  m('windrunner', 'Windrunner Captain', 'elven', 3, 4, 10, {}, {}, 'dmg', 'Volley: 3 arrows of {dmg}.', 'Commands the archers. Outshoots them too.', { tags: ['archer'], hits: 3 }),
+  m('elderbark', 'Elderbark Golem', 'elven', 4, 7, 14, { growth: 10 }, {}, 'enabler', 'Hits for {dmg} and **Growth** {growth}%.', 'Half rock, half tree, all patience.'),
+  m('ysil', 'Moon Priestess Ysil', 'elven', 4, 6, 6, { heal: 30 }, { overheal: 1 }, 'enabler', 'Hits for {dmg} and **Heals** {heal}. Your overhealing becomes **Shield** at full value instead of half.', 'Prays to the moon. The moon answers.'),
+  m('aelyth', 'Princess Aelyth & Snowpaw', 'elven', 5, 8, 24, { volley: 1, healPct: 6 }, {}, 'enabler', 'Royal Hunt: {dmg}, every ally **Archer** casts right away, and **Heals** {healPct}% of team HP.', 'Rides a white tiger. The tiger chose her.'),
+  m('worldtree', 'World Tree Seedling', 'elven', 5, 8, 10, { growth: 12 }, { auraX2: 1 }, 'enabler', 'Hits for {dmg} and **Growth** {growth}%. All ally **Auras** are twice as strong.', 'Small now. Give it ten thousand years.'),
 
-  // ---------------- ROCK ----------------
-  m('pebblet', 'Pebblet', 'rock', 1, 2.8, 3, { shield: 9 }, {}, 'Collects smaller pebbles. Calls them family.'),
-  m('gravelump', 'Gravelump', 'rock', 1, 3.5, 5, {}, { start: { shield: 30 } }, 'Starts every fight already behind a wall.'),
-  m('cragcub', 'Cragcub', 'rock', 2, 3, 6, { shield: 10 }, {}, 'Headbutts boulders for fun.'),
-  m('geodot', 'Geodot', 'rock', 2, 3.5, 3, { shield: 19 }, {}, 'Plain outside, sparkly inside.'),
-  m('quarrion', 'Quarrion', 'rock', 3, 4, 15, { shield: 15 }, {}, 'A walking quarry. Hard hat not included.'),
-  m('spikeshell', 'Spikeshell', 'rock', 3, 3, 5, { shield: 13, bash: 30 }, {}, 'Hits harder the thicker your walls are.'),
-  m('monolith', 'Monolith', 'rock', 4, 4, 26, { shield: 25 }, {}, 'Nobody knows who put it there.'),
-  m('obsidrake', 'Obsidrake', 'rock', 4, 3.5, 12, { shield: 18, burn: 3 }, {}, 'Volcanic glass, still warm.'),
-  m('titanox', 'Titanox', 'rock', 5, 5, 46, { shield: 45 }, {}, 'Mountains call it "sir".'),
-  m('colossite', 'Colossite', 'rock', 5, 4, 22, { shield: 32 }, { start: { shield: 90 } }, 'A fortress that learned to walk.'),
+  // ---------------- NECRO MACHINES ----------------
+  m('nx1', 'Unit NX-1', 'necro', 1, 3, 30, {}, {}, 'dmg', 'Laser for {dmg}. **Assimilate**: your other beings get -10% ATK and POW.', 'Step one of the plan. There are many steps.'),
+  m('leech', 'Scrap Leech', 'necro', 1, 4, 6, { drain: 5 }, {}, 'support', 'Hits for {dmg}, drains {drain}% of your own team HP and gives twice that as **Shield**.', 'Feeds on its friends. Gives some back.'),
+  m('reaper', 'Reaper Drone', 'necro', 2, 4, 50, { selfHurt: 3 }, {}, 'dmg', 'Scythe for {dmg}. Costs {selfHurt}% of your team HP.', 'Efficient. Ruthless. Slightly suicidal.'),
+  m('siphon', 'Siphon Pylon', 'necro', 2, 5, 22, { strip: 20 }, {}, 'enabler', 'Hits for {dmg} and removes {strip}% of the enemy **Shield**. **Assimilate**: your other beings get -10% ATK and POW.', 'Drinks shields like soda.'),
+  m('harvester', 'Harvester Mk3', 'necro', 3, 4.5, 75, {}, {}, 'dmg', 'Grinder for {dmg}. **Assimilate**: adjacent allies get -50% ATK and POW.', 'Do not stand next to it. Seriously.'),
+  m('graft', 'Graft Surgeon', 'necro', 3, 6, 8, { heal: 40, sapGrowth: 10 }, {}, 'support', 'Hits for {dmg} and **Heals** {heal}, but removes {sapGrowth}% of your **Growth**.', 'Fixes you with parts of your friends.'),
+  m('dreadnought', 'Dreadnought KV-9', 'necro', 4, 6, 150, {}, {}, 'carry', 'Cannon for {dmg}. **Assimilate**: your other beings get -50% ATK and POW.', 'A battleship that learned to walk.'),
+  m('nullcore', 'Null Core', 'necro', 4, 7, 10, { doom: 70, selfHurt: 5 }, {}, 'enabler', 'Hits for {dmg} and **Doom** {doom}. Costs {selfHurt}% of your team HP.', 'A hole where a heart should be.'),
+  m('omega', 'Omega Necroframe', 'necro', 5, 8, 120, {}, { absorb: 40 }, 'carry', 'Annihilate for {dmg}. **Assimilate**: your other beings get -60% ATK and POW, and Omega gets +40% for each of them.', 'The final step of the plan.'),
+  m('mainframe', 'The Mainframe', 'necro', 5, 8, 16, { haste: 10 }, { mainframe: 30 }, 'enabler', 'Hits for {dmg} and **Haste** {haste}%. Allies weakened by **Assimilate** act 30% faster.', 'Runs everything. Asks nothing. Takes everything.'),
 
-  // ---------------- POISON ----------------
-  m('sludgit', 'Sludgit', 'poison', 1, 2.5, 2, { poison: 1.7 }, {}, 'Leaves a trail. Do not follow the trail.'),
-  m('stinkbug', 'Stinkbug', 'poison', 1, 2, 3, { poison: 1 }, {}, 'Its personality is also bad.'),
-  m('toxitoad', 'Toxitoad', 'poison', 2, 3, 5, { poison: 2.7 }, {}, 'Lick it once. Regret it forever.'),
-  m('fungloom', 'Fungloom', 'poison', 2, 3.5, 2, { poison: 4.3 }, {}, 'Releases spores when sad. Always sad.'),
-  m('venomba', 'Venomba', 'poison', 3, 3.5, 12, { poison: 4 }, {}, 'Dances. Bites. Dances again.'),
-  m('miasmite', 'Miasmite', 'poison', 3, 3, 4, { poison: 3, spread: 10 }, {}, 'Makes existing poison multiply.'),
-  m('plagueroo', 'Plagueroo', 'poison', 4, 4, 20, { poison: 7 }, {}, 'Kicks with toxic hind legs.'),
-  m('belladonix', 'Belladonix', 'poison', 4, 3, 6, { poison: 8 }, {}, 'Pretty flower. Terrible idea.'),
-  m('hydraxis', 'Hydraxis', 'poison', 5, 4.5, 32, { poison: 12 }, {}, 'Cut off one head and it grows two grudges.'),
-  m('morbulb', 'Morbulb', 'poison', 5, 3.5, 10, { poison: 10 }, { start: { poison: 15 } }, 'The air turns green when it arrives.'),
+  // ---------------- JUNKVERSE (every Junkverse being hits harder per Scrap) ----------------
+  m('binkle', 'Binkle', 'junk', 1, 3, 15, { scrap: 1 }, {}, 'dmg', 'Throws junk for {dmg} and adds {scrap} **Scrap**.', 'Has a collection. Do not call it trash.'),
+  m('magpie', 'Magpie Mo', 'junk', 1, 4, 4, { shield: 10 }, {}, 'support', 'Hits for {dmg} and gives a **Shield** of {shield}.', 'Steals shiny things. Sometimes useful ones.'),
+  m('dora', 'Duct-Tape Dora', 'junk', 2, 5, 4, { heal: 15, healPerScrap: 4 }, {}, 'support', 'Hits for {dmg} and **Heals** {heal}, +{healPerScrap} for each **Scrap**.', 'If it moves and it shouldn\'t: duct tape.'),
+  m('clanker', 'Clanker Cannon', 'junk', 2, 4, 30, { spendScrap: 60 }, {}, 'dmg', 'Shot for {dmg}. Spends 1 **Scrap** for +{spendScrap}%.', 'Loads anything. Has loaded a fridge.'),
+  m('rhino', 'Rustbucket Rhino', 'junk', 3, 5, 20, { shieldPerTrinket: 5 }, {}, 'support', 'Bash for {dmg} and a **Shield** of {shieldPerTrinket} per trinket you own.', 'Mostly rust. Entirely rhino.'),
+  m('crane', 'Salvage Crane', 'junk', 3, 6, 8, { scrap: 3 }, {}, 'enabler', 'Hits for {dmg} and adds {scrap} **Scrap**.', 'Picks up anything. Puts down nothing.'),
+  m('ogre', 'Recycler Ogre', 'junk', 4, 7, 14, { missingShield: 20 }, {}, 'enabler', 'Hits for {dmg} and turns {missingShield}% of your missing HP into **Shield**.', 'Nothing is wasted. Not even your pain.'),
+  m('baron', 'Bottlecap Baron', 'junk', 4, 6, 10, { shield: 15 }, { trinketPow: 3 }, 'enabler', 'Hits for {dmg} and a **Shield** of {shield}. All allies get +3% ATK and POW per trinket you own.', 'Richest man in the dump. Pays in bottle caps.'),
+  m('landfill', 'The Landfill King', 'junk', 5, 8, 40, { scrap: 4 }, { scrapCap2: 1 }, 'enabler', 'Crush for {dmg} and adds {scrap} **Scrap**. Your **Scrap** limit is doubled.', 'Long live the king. Long live the pile.'),
+  m('colossus', 'Gearheap Colossus', 'junk', 5, 7, 30, { perScrap: 12 }, {}, 'carry', 'Crush for {dmg}, +{perScrap} for each **Scrap**.', 'A mountain of junk that learned to walk.'),
 
-  // ---------------- PSYCHIC ----------------
-  m('mindle', 'Mindle', 'psychic', 1, 2.5, 3, { expose: 6 }, {}, 'Points out your flaws. Accurately.'),
-  m('dozzle', 'Dozzle', 'psychic', 1, 3, 3, { weaken: 7 }, {}, 'Yawns. Everyone else gets sleepy.'),
-  m('psyfox', 'Psyfox', 'psychic', 2, 2.8, 6, { expose: 7 }, {}, 'Knows where you\'re going to step.'),
-  m('trancey', 'Trancey', 'psychic', 2, 3, 4, { weaken: 10 }, {}, 'Swings a pocket watch. Back and forth.'),
-  m('cerebrox', 'Cerebrox', 'psychic', 3, 3.5, 14, { expose: 10 }, {}, 'Its brain is visible. And throbbing.'),
-  m('mesmeray', 'Mesmeray', 'psychic', 3, 3, 5, { weaken: 8, expose: 6 }, {}, 'A manta ray of hypnotic patterns.'),
-  m('oraclam', 'Oraclam', 'psychic', 4, 3.5, 18, { expose: 14 }, {}, 'Opens its shell to tell your fortune. It\'s bad.'),
-  m('sphinxie', 'Sphinxie', 'psychic', 4, 4, 10, { weaken: 16 }, {}, 'Asks a riddle. Nobody hits hard while thinking.'),
-  m('psyclops', 'Psyclops', 'psychic', 5, 4.5, 34, { expose: 18 }, {}, 'One eye. Sees everything.'),
-  m('cosmind', 'Cosmind', 'psychic', 5, 3.5, 14, { expose: 10, weaken: 10 }, { start: { expose: 25 } }, 'Thinks in galaxies.'),
+  // ---------------- THE ABYSS (Pressure stacks on the enemy and never fades) ----------------
+  m('glimmerfin', 'Glimmerfin', 'abyss', 1, 3, 15, { pressure: 1 }, {}, 'dmg', 'Bite for {dmg} and {pressure} **Pressure**.', 'Its light is the last thing you see. Then the teeth.'),
+  m('eel', 'Lantern Eel', 'abyss', 1, 4, 5, { expose: 15 }, {}, 'support', 'Zap for {dmg} and **Expose** {expose}%.', 'Lights the way. To the bottom.'),
+  m('brine', 'Brine Witch', 'abyss', 2, 4, 6, { poison: 10 }, {}, 'dmg', 'Hex for {dmg} and **Poison** {poison}.', 'Brews salt into curses.'),
+  m('coral', 'Coral Warden', 'abyss', 2, 5, 5, { shield: 20, shieldPerPressure: 3 }, {}, 'support', 'Hits for {dmg} and a **Shield** of {shield}, +{shieldPerPressure} per enemy **Pressure**.', 'Guards the reef. The reef guards back.'),
+  m('angler', 'Anglerfang', 'abyss', 3, 4, 35, { perPressure: 10 }, {}, 'dmg', 'Lure for {dmg}, +{perPressure}% per enemy **Pressure**.', 'Patient. Hungry. Mostly hungry.'),
+  m('tidecaller', 'Tide Caller', 'abyss', 3, 6, 8, { chill: 20 }, {}, 'enabler', 'Hits for {dmg} and **Chill** {chill}%.', 'Pulls the cold up from the deep.'),
+  m('leviathan', 'Leviathan Calf', 'abyss', 4, 6, 20, { crush: 15 }, {}, 'carry', 'Crush for {dmg}, +{crush} per enemy **Pressure**, then the Pressure is used up.', 'Just a baby. Already the size of a ship.'),
+  m('bell', 'Drowned Bell', 'abyss', 4, 7, 10, { pressure: 3 }, {}, 'enabler', 'Tolls for {dmg} and {pressure} **Pressure**.', 'Rings at the bottom of the sea. Nobody rings it.'),
+  m('kraken', 'Mother Kraken', 'abyss', 5, 8, 20, { doom: 70 }, {}, 'enabler', 'Hits for {dmg} and **Doom** {doom}.', 'Every tentacle a different nightmare.'),
+  m('trench', 'The Trench', 'abyss', 5, 8, 30, { pressure: 2 }, { late: 30 }, 'enabler', 'Hits for {dmg} and {pressure} **Pressure**. After 20 seconds, all your damage is +30%.', 'The deepest place there is. It is listening.'),
 
-  // ---------------- GHOST ----------------
-  m('boolet', 'Boolet', 'ghost', 1, 2.5, 2, { doom: 6.5 }, {}, 'Says boo. Means it.'),
-  m('wisplet', 'Wisplet', 'ghost', 1, 2, 3, { lifesteal: 60 }, {}, 'Sips a little life with every touch.'),
-  m('spookit', 'Spookit', 'ghost', 2, 3, 3, { doom: 12 }, {}, 'A haunted teapot. Whistles at midnight.'),
-  m('ghoulpup', 'Ghoulpup', 'ghost', 2, 2.5, 6, { lifesteal: 60 }, {}, 'Fetches souls instead of sticks.'),
-  m('wraithorn', 'Wraithorn', 'ghost', 3, 3.5, 6, { doom: 23 }, {}, 'You hear it a few seconds after it hits.'),
-  m('lanternik', 'Lanternik', 'ghost', 3, 3, 10, { lifesteal: 60, doom: 6 }, {}, 'Its lantern burns on borrowed time.'),
-  m('banshriek', 'Banshriek', 'ghost', 4, 4, 8, { doom: 44 }, {}, 'Its scream arrives late but loud.'),
-  m('soulsipper', 'Soulsipper', 'ghost', 4, 3, 14, { lifesteal: 70 }, {}, 'Drinks through a bendy straw.'),
-  m('phantomaw', 'Phantomaw', 'ghost', 5, 4.5, 12, { doom: 70 }, {}, 'The jaws close five seconds after you see them.'),
-  m('reapurr', 'Reapurr', 'ghost', 5, 3.5, 28, { lifesteal: 50, execute: 100 }, {}, 'A cat with a scythe. Finishes what others start.'),
+  // ---------------- DREAMSCAPE ----------------
+  m('snoozle', 'Snoozle', 'dream', 1, 4, 5, { freezeTop: 1.5 }, {}, 'support', 'Hits for {dmg} and puts the readiest enemy to **Sleep** for {freezeTop}s.', 'Yawns. Everyone nearby yawns too. Then naps.'),
+  m('pillow', 'Pillow Imp', 'dream', 1, 3, 14, { vsSleep: 100 }, {}, 'dmg', 'Smack for {dmg}, +{vsSleep}% if an enemy is **Asleep**.', 'Pillow fights to the death.'),
+  m('moth', 'Nightmare Moth', 'dream', 2, 4, 12, { weaken: 15 }, {}, 'support', 'Dust for {dmg} and **Weaken** {weaken}%.', 'Drawn to the light of bedside lamps.'),
+  m('sandman', 'Sandman Jr.', 'dream', 2, 5, 6, { freeze: 2 }, {}, 'support', 'Hits for {dmg} and puts an enemy to **Sleep** for {freeze}s.', 'Still learning. Sometimes uses too much sand.'),
+  m('jester', 'Mirror Jester', 'dream', 3, 5, 10, { confuse: 50 }, {}, 'enabler', 'Hits for {dmg} and **Confuses**: the enemy\'s next cast hits their own team at {confuse}%.', 'Is it you? Is it them? Ha!'),
+  m('baku', 'Dream Eater Baku', 'dream', 3, 5, 25, { dreamHeal: 100 }, {}, 'support', 'Hits for {dmg}. If an enemy is **Asleep**, heals {dreamHeal}% of the damage.', 'Eats bad dreams. Good ones too, if hungry.'),
+  m('lucid', 'Lucid Knight', 'dream', 4, 6, 50, { vsDebuff: 100 }, {}, 'carry', 'Blade for {dmg}, +{vsDebuff}% against **Exposed** or **Weakened** enemies.', 'Knows this is a dream. Fights anyway.'),
+  m('drowse', 'Clock of Drowse', 'dream', 4, 7, 6, { freezeAll: 1 }, {}, 'enabler', 'Hits for {dmg} and puts every enemy to **Sleep** for {freezeAll}s.', 'Always reads 3am.'),
+  m('lunara', 'Lunara, Dreamweaver', 'dream', 5, 8, 14, { expose: 20 }, { linger: 50 }, 'enabler', 'Hits for {dmg} and **Expose** {expose}%. Your **Chill**, **Expose** and **Weaken** fade 50% slower.', 'Weaves dreams from moonlight and regret.'),
+  m('dread', 'The Waking Dread', 'dream', 5, 8, 20, { perDebuff: 20 }, {}, 'carry', 'Hits for {dmg}, +{perDebuff} for each different debuff on the enemy.', 'The moment right before you wake up screaming.'),
 
-  // ---------------- JUNK ----------------
-  m('trashling', 'Trashling', 'junk', 1, 2.5, 3, { scrap: 1 }, {}, 'One mon\'s trash is another mon\'s treasure.'),
-  m('canrat', 'Canrat', 'junk', 1, 2, 3, {}, { salvage: 3 }, 'Brings home loose change after every fight.'),
-  m('binbot', 'Binbot', 'junk', 2, 3, 6, { scrap: 2 }, {}, 'Collection day is every day.'),
-  m('rustacean', 'Rustacean', 'junk', 2, 3, 7, { shield: 6 }, { salvage: 3 }, 'A crab in a rusty can. Sells the can afterwards.'),
-  m('dumpsterix', 'Dumpsterix', 'junk', 3, 3.5, 12, { scrap: 2 }, {}, 'Rolls in on squeaky wheels.'),
-  m('magnetick', 'Magnetick', 'junk', 3, 2.5, 7, { scrap: 1 }, { salvage: 6 }, 'Everything metal sticks to it. Including coins.'),
-  m('crushbox', 'Crushbox', 'junk', 4, 4, 26, { scrap: 4 }, {}, 'A compactor with opinions.'),
-  m('gearwolf', 'Gearwolf', 'junk', 4, 3, 10, { scrap: 2, scrapper: 100 }, {}, 'Howls at the scrap heap. Gets double from it.'),
-  m('landfillion', 'Landfillion', 'junk', 5, 4.5, 46, { scrap: 5 }, {}, 'A lion made of everything you threw away.'),
-  m('recyclops', 'Recyclops', 'junk', 5, 3.5, 26, { scrap: 3 }, { start: { scrap: 5 }, salvage: 9 }, 'Sorts the waste. Keeps the good stuff.'),
-
-  // ---------------- SOUND ----------------
-  m('chirpip', 'Chirpip', 'sound', 1, 2.5, 3, { echo: 40 }, {}, 'Repeats whatever the mon in front just did.'),
-  m('drumbo', 'Drumbo', 'sound', 1, 2.2, 3, { selfgrow: 10 }, {}, 'Every beat louder than the last.'),
-  m('hummingbard', 'Hummingbard', 'sound', 2, 3, 4, { echo: 55 }, {}, 'Hums along with its friends.'),
-  m('bassloon', 'Bassloon', 'sound', 2, 3, 7, { chargeNext: 0.8 }, {}, 'Its bass drop pushes the next ally forward.'),
-  m('amplifox', 'Amplifox', 'sound', 3, 3.5, 8, { echo: 70 }, {}, 'Ears like speakers. Turned up to 11.'),
-  m('kazooka', 'Kazooka', 'sound', 3, 2.2, 6, { selfgrow: 20 }, {}, 'Plays the kazoo. It only gets worse.'),
-  m('banjoar', 'Banjoar', 'sound', 4, 3.5, 10, { echo: 85 }, {}, 'A boar with a banjo. Duelling is encouraged.'),
-  m('maestrich', 'Maestrich', 'sound', 4, 3, 8, { echoBack: 75 }, {}, 'Conducts the mon behind it.'),
-  m('symphonix', 'Symphonix', 'sound', 5, 4, 15, { echoBoth: 50 }, {}, 'A whole orchestra in one bird.'),
-  m('encorca', 'Encorca', 'sound', 5, 4, 28, { selfgrow: 15 }, { start: { haste: 10 } }, 'An orca rockstar. Always plays one more.'),
+  // ---------------- CLOCKWORK CITY ----------------
+  m('tick', 'Tick', 'clock', 1, 3, 15, { every4: 1 }, {}, 'dmg', 'Cog for {dmg}. Every 4th cast repeats right away.', 'Tick. Tick. Tick. TICK.'),
+  m('tock', 'Tock', 'clock', 1, 4, 5, { haste: 5 }, {}, 'support', 'Hits for {dmg} and **Haste** {haste}%.', 'Tick\'s twin. Slightly slower.'),
+  m('spring', 'Spring Gunner', 'clock', 2, 3.5, 18, { selfgrow: 15 }, {}, 'dmg', 'Bolt for {dmg}. Gains +{selfgrow}% damage after each cast.', 'Winds tighter with every shot.'),
+  m('mainspring', 'Mainspring Mechanic', 'clock', 2, 5, 5, { shield: 25, haste: 6 }, {}, 'support', 'Hits for {dmg}, a **Shield** of {shield} and **Haste** {haste}%.', 'Oils the gears. Talks to them, too.'),
+  m('pendulum', 'Pendulum Blade', 'clock', 3, 4, 40, {}, {}, 'dmg', 'Swing for {dmg}.', 'Back and forth. Back and forth. Ow.'),
+  m('winder', 'Gear Winder', 'clock', 3, 6, 8, { charge: 0.6 }, {}, 'enabler', 'Hits for {dmg} and **Charges** every ally {charge}s.', 'Winds everyone up. Literally.'),
+  m('escapement', 'Escapement Engine', 'clock', 4, 6, 8, { echo: 60 }, {}, 'enabler', 'Hits for {dmg} and **Echoes** the ally in front at {echo}%.', 'The part of the clock that makes it tick.'),
+  m('cuckoo', 'Cuckoo Sentinel', 'clock', 4, 6, 10, { perAllyCast: 8 }, {}, 'carry', 'Strike for {dmg}, +{perAllyCast} for each ally cast since its last strike.', 'Waits for the hour. Then strikes.'),
+  m('orrery', 'The Grand Orrery', 'clock', 5, 8, 20, { haste: 10 }, { reset15: 1 }, 'enabler', 'Hits for {dmg} and **Haste** {haste}%. At 15 seconds, every ally casts right away.', 'Models the whole universe. Runs it a little faster.'),
+  m('chronarch', 'Chronarch Vale', 'clock', 5, 8, 16, { shield: 35 }, { rewind: 5 }, 'enabler', 'Hits for {dmg} and a **Shield** of {shield}. Once, when your team drops under 30%: rewinds team HP to 5 seconds ago.', 'Has seen how this ends. Changed it.'),
 ];
 export const MON = Object.fromEntries(MONS.map(x => [x.id, x]));
 // Balance knobs written by tools/balance.mjs from simulations:
 // COST_ADJ = price change per mon (-5..+5, stronger archetypes cost more); TUNE = multiplier on all of a mon's numbers.
-export const COST_ADJ = {"flarebat":5,"wickwisp":5,"ripplet":5,"tidalon":-5,"krakenling":-5,"lashvine":-5,"petalisk":5,"verdragon":5,"dynamole":-5,"stormlion":-5,"blizzowl":5,"crystalynx":5,"borealis":5,"geodot":5,"quarrion":-5,"spikeshell":5,"stinkbug":5,"toxitoad":-5,"plagueroo":-5,"psyfox":5,"psyclops":5,"cosmind":5,"soulsipper":-5,"reapurr":-5,"rustacean":-5,"dumpsterix":-5,"landfillion":-5,"corallis":5,"thunderam":-5,"fungloom":-5,"wisplet":5,"binbot":-5};
-export const TUNE = {"cindermite":0.761,"kilnkit":0.955,"wickwisp":0.722,"infernodon":0.81,"puddlefin":0.9,"bubblot":0.904,"mistle":0.938,"tidalon":1.054,"krakenling":1.214,"rainbeau":1.068,"aquarion":1.167,"sproutle":1.045,"budgeon":1.171,"oakhorn":0.882,"lashvine":0.995,"petalisk":0.948,"barkodile":0.993,"zapling":1.033,"coilbee":0.817,"teslug":0.893,"raijumbo":0.858,"ampharaoh":0.597,"frostkit":1.073,"snowpeck":1.058,"glaciub":0.809,"tuskfrost":0.878,"blizzowl":0.993,"crystalynx":0.993,"borealis":0.899,"pebblet":0.728,"geodot":0.814,"monolith":1.055,"obsidrake":1.24,"colossite":1.153,"stinkbug":0.878,"plagueroo":0.992,"hydraxis":1.307,"morbulb":1.159,"mindle":1.015,"psyfox":0.88,"cerebrox":0.893,"mesmeray":0.901,"oraclam":0.823,"psyclops":1.395,"cosmind":0.85,"boolet":0.994,"ghoulpup":1.064,"wraithorn":1.06,"soulsipper":1.175,"phantomaw":0.919,"canrat":1.407,"rustacean":0.685,"dumpsterix":1.179,"magnetick":1.261,"crushbox":1.023,"gearwolf":0.856,"landfillion":1.303,"drumbo":1.142,"bassloon":1.331,"amplifox":0.875,"kazooka":1.018,"banjoar":0.847,"maestrich":0.829,"encorca":1.122,"emberpup":0.802,"sunmoth":1.003,"phoenyx":0.869,"corallis":1.016,"leviathorn":1.185,"elderoot":0.922,"verdragon":0.832,"voltmouse":0.919,"sparkoon":1.087,"dynamole":0.878,"shiverling":1.082,"glacierex":0.8,"gravelump":1.106,"cragcub":0.91,"spikeshell":0.953,"titanox":1.117,"fungloom":0.964,"miasmite":0.788,"belladonix":1.199,"dozzle":1.15,"trancey":1.125,"sphinxie":0.884,"wisplet":0.851,"spookit":1.126,"binbot":1.019,"recyclops":1.445,"hummingbard":1.025,"symphonix":1.219,"leaflynx":0.982,"flurrfox":1.216,"sludgit":0.936,"toxitoad":0.943,"lanternik":0.925,"trashling":0.961,"magmaw":1.216,"thunderam":0.939,"stormlion":0.72,"quarrion":1.072,"banshriek":1.037,"flarebat":0.874,"thornbit":0.97,"chirpip":0.898,"pyrrhino":1.105,"venomba":1.163,"reapurr":1.091,"ripplet":1.015};
+export const COST_ADJ = {"skulldrone":5,"tinfoil":-5,"meowma":5,"pyra":5,"frost":5,"skarr":5,"mothership":5,"kite":5,"sora":-5,"rhea":5,"willow":5,"aries":5,"pisces":-5,"scorpio":5,"libra":-5,"sagittarius":-5,"leo":5,"ophiuchus":-5,"bertha":-5,"oldtusk":-5,"mara":-5,"rexalon":5,"lirien":5,"grovesinger":-5,"thornhoof":5,"nx1":5,"leech":-5,"reaper":5,"siphon":-5,"graft":-5,"dreadnought":-5,"nullcore":-5,"mainframe":-5,"magpie":-5,"dora":-5,"clanker":5,"crane":-5,"ogre":5,"baron":5,"landfill":-5,"brine":5,"coral":-5,"tidecaller":5,"bell":-5,"kraken":-5,"trench":-5,"snoozle":-5,"moth":5,"sandman":-5,"dread":-5,"tick":5,"tock":-5,"mainspring":-5,"pendulum":5,"escapement":5,"cuckoo":5,"orrery":5};
+export const TUNE = {"tinfoil":0.959,"meowma":0.644,"rosa":1.17,"pyra":0.751,"frost":0.512,"skarr":0.797,"mothership":0.465,"pip":0.853,"bao":0.919,"kite":0.959,"rhea":0.724,"gorran":0.964,"ashi":1.123,"hoshi":1.224,"ryo":0.921,"aries":1.034,"pisces":1.035,"taurus":1.131,"scorpio":0.84,"libra":1.452,"sagittarius":1.222,"leo":1.324,"ilse":0.915,"harpoon":0.761,"mara":2.1,"rexalon":0.862,"mosswhisper":0.985,"kaelen":0.834,"grovesinger":1.148,"windrunner":0.919,"elderbark":1.097,"ysil":1.473,"aelyth":1.02,"nx1":0.789,"leech":0.893,"reaper":0.57,"siphon":1.82,"graft":1.358,"dreadnought":1.317,"nullcore":0.954,"omega":0.88,"mainframe":1.095,"binkle":0.774,"magpie":1.302,"dora":1.496,"clanker":0.888,"rhino":0.92,"crane":1.684,"ogre":0.791,"baron":0.577,"landfill":1.122,"glimmerfin":0.892,"eel":0.942,"brine":0.882,"coral":0.989,"angler":0.856,"leviathan":1.5,"bell":1.564,"kraken":0.896,"trench":1.208,"snoozle":0.919,"moth":0.826,"baku":1.458,"drowse":0.751,"lunara":0.96,"dread":1.467,"tick":0.944,"tock":0.957,"spring":0.902,"mainspring":0.974,"cuckoo":1.088,"orrery":0.602,"grimhorn":1.003,"willow":0.914,"gemini":0.823,"ophiuchus":1.55,"dunemaw":0.844,"hale":1.496,"isolde":0.946,"lirien":1.072,"thornhoof":0.883,"harvester":1.095,"pillow":0.911,"sandman":1.211,"lucid":0.779,"winder":1.197,"escapement":1.449,"sora":0.736,"jester":1.087,"pendulum":0.939,"chronarch":1.478,"worldtree":1.116,"colossus":1.506,"skulldrone":0.947,"virgo":1.224,"brann":1.004,"brick":0.971,"oldtusk":0.976,"tidecaller":0.955,"bertha":0.987};
 
 // Effect metadata: icon, label, and how levels scale it.
+// scale: dmg (like hits), fx (flat effects), pct, sec, lvl (base x level), flat (never scales)
 export const FX = {
   dmg:       { icon: '💥', label: 'Hit', scale: 'dmg' },
   burn:      { icon: '🔥', label: 'Burn', scale: 'fx' },
@@ -230,119 +228,157 @@ export const FX = {
   charge:    { icon: '🔋', label: 'Charge all', scale: 'sec', unit: 's' },
   chargeNext:{ icon: '🔋', label: 'Charge next', scale: 'sec', unit: 's' },
   chill:     { icon: '❄️', label: 'Chill', scale: 'pct', unit: '%' },
-  freeze:    { icon: '🧊', label: 'Freeze', scale: 'sec', unit: 's' },
-  freezeTop: { icon: '🧊', label: 'Freeze fastest', scale: 'sec', unit: 's' },
-  freezeAll: { icon: '🧊', label: 'Freeze all', scale: 'sec', unit: 's' },
+  freeze:    { icon: '💤', label: 'Sleep', scale: 'sec', unit: 's' },
+  freezeTop: { icon: '💤', label: 'Sleep readiest', scale: 'sec', unit: 's' },
+  freezeAll: { icon: '💤', label: 'Sleep all', scale: 'sec', unit: 's' },
   shield:    { icon: '🛡️', label: 'Shield', scale: 'fx' },
-  bash:      { icon: '🪨', label: 'Bash (shield→dmg)', scale: 'pct', unit: '%' },
   poison:    { icon: '☠️', label: 'Poison', scale: 'fx' },
-  spread:    { icon: '🦠', label: 'Spread', scale: 'pct', unit: '%' },
-  stoke:     { icon: '♨️', label: 'Stoke', scale: 'pct', unit: '%' },
   expose:    { icon: '🎯', label: 'Expose', scale: 'pct', unit: '%' },
   weaken:    { icon: '🌀', label: 'Weaken', scale: 'pct', unit: '%' },
   doom:      { icon: '💀', label: 'Doom', scale: 'fx' },
-  lifesteal: { icon: '🩸', label: 'Lifesteal', scale: 'pct', unit: '%' },
-  execute:   { icon: '🗡️', label: 'Execute <30%', scale: 'pct', unit: '%' },
-  scrap:     { icon: '🔩', label: 'Scrap', scale: 'fx' },
-  scrapper:  { icon: '🔧', label: 'Extra scrap dmg', scale: 'pct', unit: '%' },
+  scrap:     { icon: '🔩', label: 'Scrap', scale: 'lvl' },
   echo:      { icon: '🎵', label: 'Echo ally in front', scale: 'pct', unit: '%' },
   echoBack:  { icon: '🎵', label: 'Echo ally behind', scale: 'pct', unit: '%' },
   echoBoth:  { icon: '🎶', label: 'Echo front & behind', scale: 'pct', unit: '%' },
-  lowheal:   { icon: '🌊', label: 'Heal+ when <50%', scale: 'pct', unit: '%' },
   regen:     { icon: '✨', label: 'Regen/s', scale: 'fx' },
-  salvage:   { icon: '🪙', label: 'Gold after battle', scale: 'lvl' },
   rebirth:   { icon: '🪶', label: 'Rebirth heal', scale: 'pct', unit: '%' },
+  // v0.7 dimension mechanics
+  lastStand: { icon: '🩸', label: 'Last Stand', scale: 'pct', unit: '%' },
+  overclock: { icon: '🛸', label: 'Overclock', scale: 'flat' },
+  ki:        { icon: '🔥', label: 'Ki to all', scale: 'lvl' },
+  kinova:    { icon: '🌟', label: 'Per Ki gained', scale: 'dmg' },
+  copyLast:  { icon: '🪞', label: 'Copy last cast', scale: 'pct', unit: '%' },
+  frontRow:  { icon: '⬆️', label: 'Front row bonus', scale: 'pct', unit: '%' },
+  perAlign:  { icon: '♈', label: 'Per aligned pair', scale: 'dmg' },
+  balance:   { icon: '⚖️', label: 'Per % gap', scale: 'fx' },
+  burst:     { icon: '💫', label: 'Cosmic Burst', scale: 'pct', unit: '%' },
+  perGiant:  { icon: '🦣', label: 'Per Giant', scale: 'dmg' },
+  strip:     { icon: '🕳️', label: 'Shield strip', scale: 'flat', unit: '%' },
+  shieldPerHunter: { icon: '🎯', label: 'Shield per Hunter', scale: 'fx' },
+  volleyAdj: { icon: '🏹', label: 'Per adjacent Archer', scale: 'pct', unit: '%' },
+  volley:    { icon: '🏹', label: 'Archers cast', scale: 'flat' },
+  healPct:   { icon: '💚', label: 'Heal % HP', scale: 'pct', unit: '%' },
+  drain:     { icon: '🩸', label: 'Self drain', scale: 'flat', unit: '%' },
+  selfHurt:  { icon: '🩸', label: 'Self damage', scale: 'flat', unit: '%' },
+  sapGrowth: { icon: '🥀', label: 'Growth lost', scale: 'flat', unit: '%' },
+  healPerScrap: { icon: '🔩', label: 'Heal per Scrap', scale: 'fx' },
+  spendScrap:{ icon: '🔩', label: 'Scrap spend bonus', scale: 'pct', unit: '%' },
+  shieldPerTrinket: { icon: '🎒', label: 'Shield per trinket', scale: 'fx' },
+  missingShield: { icon: '♻️', label: 'Missing HP to shield', scale: 'pct', unit: '%' },
+  perScrap:  { icon: '🔩', label: 'Per Scrap', scale: 'dmg' },
+  pressure:  { icon: '🌊', label: 'Pressure', scale: 'lvl' },
+  shieldPerPressure: { icon: '🌊', label: 'Shield per Pressure', scale: 'fx' },
+  perPressure: { icon: '🌊', label: 'Per Pressure', scale: 'pct', unit: '%' },
+  crush:     { icon: '🌊', label: 'Per Pressure (uses it)', scale: 'dmg' },
+  vsSleep:   { icon: '💤', label: 'Vs sleeping', scale: 'pct', unit: '%' },
+  confuse:   { icon: '😵', label: 'Confuse', scale: 'pct', unit: '%' },
+  dreamHeal: { icon: '💤', label: 'Dream heal', scale: 'pct', unit: '%' },
+  vsDebuff:  { icon: '🗡️', label: 'Vs Exposed/Weakened', scale: 'pct', unit: '%' },
+  perDebuff: { icon: '🌑', label: 'Per debuff', scale: 'dmg' },
+  every4:    { icon: '🔁', label: 'Every 4th cast twice', scale: 'flat' },
+  perAllyCast: { icon: '🐦', label: 'Per ally cast', scale: 'dmg' },
 };
 export const ECHO_KEYS = ['echo', 'echoBack', 'echoBoth'];
+// keys that only describe the being (shown in its text), not a separate chip
+export const TEXT_ONLY = ['every4', 'overclock', 'volley'];
 
-// ------------------------------------------------------------------ triggers (v0.3)
-// One extra trigger per mon (optional), separate from its cooldown cast.
-// Combat: allyCast (filter by type and/or position: front, behind, adjacent), selfCast, lowHp, foeLow, sudden, shieldGain, healed, doomBoom
+// Keyword glossary: shown when a bold keyword is tapped in details, help and results
+export const KEYWORDS = {
+  'Burn': 'Burn hits every second and fades by 30% each tick. Blocked by Shield.',
+  'Burning': 'The enemy has Burn on them.',
+  'Poison': 'Poison hits every second for a third of its stack, never fades and goes through Shield.',
+  'Heals': 'Restores team HP. Healing past full HP becomes Shield at half value.',
+  'Cleanses': 'Removes Burn first, then Poison, from your team.',
+  'Shield': 'Soaks hits and Burn before HP. Can reach 50% of team HP.',
+  'Chill': 'Slows the whole enemy team. Fades 3% per second.',
+  'Chilled': 'The enemy has Chill on them.',
+  'Haste': 'Speeds up your whole team. Fades 3% per second.',
+  'Growth': 'Raises your whole team\'s hit damage for the rest of the battle.',
+  'Expose': 'The enemy takes more damage from everything. Fades over time.',
+  'Exposed': 'The enemy has Expose on them.',
+  'Weaken': 'The enemy deals less hit damage. Fades over time.',
+  'Weakened': 'The enemy has Weaken on them.',
+  'Doom': 'Piles up on the enemy and detonates 5 seconds after it starts, going through Shield.',
+  'Ki': 'Martial Realm beings gain 1 Ki per cast; any being can receive Ki. At 5 Ki a being Transforms.',
+  'Transform': 'At 5 Ki: +50% ATK and POW for 6 seconds, then Ki starts over.',
+  'Transforms': 'At 5 Ki: +50% ATK and POW for 6 seconds, then Ki starts over.',
+  'Transformed': 'At 5 Ki: +50% ATK and POW for 6 seconds, then Ki starts over.',
+  'Transformations': 'At 5 Ki: +50% ATK and POW for 6 seconds, then Ki starts over.',
+  'Aligned': 'A Zodiac being next to another of the same element (fire, earth, air, water) gets +20% ATK and POW.',
+  'Alignment': 'A Zodiac being next to another of the same element (fire, earth, air, water) gets +20% ATK and POW.',
+  'Cosmic Burst': 'Turns your Shield into damage, then the Shield is gone.',
+  'Giant': 'A tag: giant beasts from the Age of Giants.',
+  'Hunter': 'A tag: the hunters of the Age of Giants.',
+  'Archer': 'A tag: Elvenwood bowmen.',
+  'Auras': 'Ongoing bonuses a being gives to allies in certain slots.',
+  'Last Stand': 'Deals more damage the more HP your team has lost, up to the full bonus at 0 HP.',
+  'Overclock': 'Every ally\'s next cast happens twice.',
+  'Assimilate': 'The machine drains its own allies: they get less ATK and POW.',
+  'Scrap': 'Piles up on your team (limit 40). Every Junkverse being hits +0.5 harder per Scrap.',
+  'Pressure': 'Stacks on the enemy and never fades (limit 30). Some Abyss beings get stronger with it or use it up.',
+  'Sleep': 'Pushes enemy timers back. For 2 seconds after, the enemy counts as Asleep.',
+  'Asleep': 'An enemy was put to Sleep in the last 2 seconds.',
+  'Confuses': 'The enemy\'s next cast hits their own team instead, at reduced power.',
+  'Charges': 'Pushes ally timers forward.',
+  'Echoes': 'Repeats another being\'s cast at partial power.',
+};
+
+// ------------------------------------------------------------------ triggers
+// One extra trigger per being (optional), separate from its cooldown cast.
+// Combat: allyCast (filter by dimension and/or position: front, behind, adjacent), selfCast, lowHp, foeLow, sudden, shieldGain, healed, doomBoom
 // Shop:   buy, sell, levelUp, trinket, allySold, reroll, win, loss, battleEnd
-// v0.4 actions: { multicast: N } (casts N times now, cooldown resets), { plus: N } (+N flat hit damage, permanent for the run,
-//   also from combat triggers), { junk: N } (gain N no-effect junk trinkets), { trinket: T } (gain a random real tier T trinket)
-// do: { cast } (cast now, cooldown resets) | { fx: {effect: base} } (scaled like the move) | { pct: 'dmg'|'heal'|'shield', v }
-//     | { grow: {atk|pow} } self, permanent | { growAll: {type, atk|pow} } | { growFront: {atk|pow} } | { growRand: {type, atk|pow} } | { gold }
-// Rules: a mon is never triggered by a copy of itself; each mon fires at most once per trigger chain (stops loops). No other limits.
+// do: { cast } | { multicast: N } | { plus: N } (+N hit damage for the run) | { junk: N } | { trinket: T }
+//     | { fx: {effect: base} } | { pct: 'dmg'|'heal'|'shield', v } | { grow: {atk|pow} } | { growAll: {type, atk|pow} }
+//     | { growFront: {atk|pow} } | { growRand: {type, atk|pow} } | { gold }
+// Rules: a being is never triggered by a copy of itself; each fires at most once per trigger chain (stops loops).
 const tg = (on, d, extra = {}) => ({ on, do: d, ...extra });
 export const TRIGGERS = {
-  // rare "cast now" reactions
-  wickwisp: tg('allyCast', { cast: 1 }, { type: 'fire' }),
-  coilbee: tg('allyCast', { cast: 1 }, { type: 'electric' }),
-  kazooka: tg('allyCast', { cast: 1 }, { from: 'front' }),
-  rainbeau: tg('lowHp', { cast: 1 }),
-  monolith: tg('lowHp', { cast: 1 }),
-  banshriek: tg('sudden', { cast: 1 }),
-  // combat effects
-  encorca: tg('sudden', { multicast: 3 }),
-  infernodon: tg('foeLow', { multicast: 2 }),
-  symphonix: tg('lowHp', { multicast: 2 }),
-  cerebrox: tg('allyCast', { fx: { expose: 3 } }, { type: 'psychic' }),
-  stinkbug: tg('allyCast', { fx: { poison: 0.5 } }, { from: 'adjacent' }),
-  ripplet: tg('allyCast', { fx: { heal: 2 } }, { from: 'adjacent' }),
-  lanternik: tg('allyCast', { fx: { doom: 3 } }, { from: 'adjacent' }),
-  thornbit: tg('allyCast', { fx: { selfgrow: 5 } }, { from: 'front' }),
-  shiverling: tg('allyCast', { fx: { freezeTop: 0.3 } }, { from: 'behind' }),
-  miasmite: tg('foeLow', { fx: { spread: 60 } }),
-  glaciub: tg('foeLow', { fx: { freezeAll: 1 } }),
-  flarebat: tg('foeLow', { fx: { burn: 15 } }),
-  cragcub: tg('lowHp', { fx: { shield: 40 } }),
-  mistle: tg('lowHp', { fx: { heal: 40 } }),
-  raijumbo: tg('sudden', { fx: { haste: 30 } }),
-  blizzowl: tg('sudden', { fx: { chill: 25 } }),
-  spikeshell: tg('shieldGain', { pct: 'dmg', v: 25 }),
-  corallis: tg('healed', { pct: 'shield', v: 25 }),
-  wisplet: tg('healed', { fx: { doom: 2.5 } }),
-  phantomaw: tg('doomBoom', { pct: 'heal', v: 30 }),
-  // shop / run
-  budgeon: tg('buy', { growFront: { pow: 0.1 } }),
-  puddlefin: tg('sell', { growRand: { type: 'water', pow: 0.15 } }),
-  canrat: tg('battleEnd', { junk: 1 }),
-  magnetick: tg('battleEnd', { junk: 1 }),
-  dumpsterix: tg('sell', { junk: 2 }),
-  fungloom: tg('sell', { growAll: { type: 'poison', pow: 0.1 } }),
-  kilnkit: tg('levelUp', { growAll: { type: 'fire', atk: 0.08 } }),
-  hummingbard: tg('levelUp', { growAll: { type: 'sound', pow: 0.1 } }),
-  recyclops: tg('win', { trinket: 2 }),
-  crushbox: tg('levelUp', { trinket: 3 }),
-  oraclam: tg('win', { trinket: 1 }),
-  snowpeck: tg('trinket', { grow: { pow: 0.1 } }),
-  geodot: tg('trinket', { grow: { pow: 0.2 } }),
-  gearwolf: tg('trinket', { plus: 3 }),
-  titanox: tg('trinket', { plus: 6 }),
-  rustacean: tg('trinket', { plus: 1 }),
-  psyfox: tg('trinket', { grow: { atk: 0.1, pow: 0.1 } }),
-  trashling: tg('allySold', { grow: { atk: 0.1 } }),
-  binbot: tg('allySold', { grow: { pow: 0.08 } }),
-  mindle: tg('reroll', { grow: { pow: 0.02 } }),
-  drumbo: tg('reroll', { grow: { atk: 0.03 } }),
-  elderoot: tg('win', { plus: 6 }),
-  ghoulpup: tg('win', { plus: 2 }),
-  cindermite: tg('selfCast', { plus: 0.035 }),
-  pyrrhino: tg('selfCast', { plus: 0.15 }),
-  lashvine: tg('selfCast', { plus: 0.06 }),
-  leaflynx: tg('win', { grow: { pow: 0.04 } }),
-  toxitoad: tg('loss', { grow: { atk: 0.15 } }),
+  pip: tg('win', { grow: { atk: 0.04 } }),
+  harpoon: tg('foeLow', { cast: 1 }),
+  reaper: tg('lowHp', { multicast: 2 }),
+  ogre: tg('lowHp', { cast: 1 }),
+  isolde: tg('foeLow', { fx: { expose: 20 } }),
+  kraken: tg('sudden', { fx: { doom: 70 } }),
+  frost: tg('allyCast', { fx: { chill: 6 } }, { from: 'adjacent' }),
+  coral: tg('shieldGain', { pct: 'dmg', v: 20 }),
+  tock: tg('allyCast', { fx: { haste: 2 } }, { type: 'clock' }),
+  sandman: tg('allyCast', { cast: 1 }, { type: 'dream', from: 'front' }),
+  bao: tg('lowHp', { fx: { shield: 40 } }),
+  mosswhisper: tg('healed', { fx: { growth: 1 } }),
+  magpie: tg('win', { junk: 1 }),
+  landfill: tg('battleEnd', { junk: 1 }),
+  rhino: tg('trinket', { grow: { pow: 0.1 } }),
+  baron: tg('sell', { gold: 1 }),
+  crane: tg('allySold', { grow: { atk: 0.1 } }),
+  binkle: tg('reroll', { grow: { atk: 0.02 } }),
+  hale: tg('buy', { growAll: { type: 'giants', pow: 0.05 } }),
+  kite: tg('levelUp', { growAll: { type: 'martial', atk: 0.06 } }),
+  gemini: tg('levelUp', { trinket: 2 }),
+  spring: tg('selfCast', { plus: 0.05 }),
 };
 export const SHOP_TRIGGERS = ['buy', 'sell', 'levelUp', 'trinket', 'allySold', 'reroll', 'win', 'loss', 'battleEnd'];
 
-// Ongoing auras: who = front | behind | adjacent | nonadjacent; atk/pow/speed in %, scaled x1/1.5/2 by level
+// Ongoing auras: who = front | behind | adjacent | nonadjacent | row | all; atk/pow/speed in %, scaled x1/1.5/2 by level
+// tag: only allies with that tag. Negative values = Assimilate (Necro Machines).
 export const AURAS = {
-  sproutle: { who: 'adjacent', atk: 10 },
-  zapling: { who: 'adjacent', speed: 8 },
-  pebblet: { who: 'behind', atk: 15 },
-  frostkit: { who: 'nonadjacent', pow: 8 },
-  dozzle: { who: 'front', pow: 15 },
-  chirpip: { who: 'front', atk: 12 },
-  gravelump: { who: 'behind', atk: 20 },
-  oakhorn: { who: 'adjacent', pow: 15 },
-  petalisk: { who: 'nonadjacent', atk: 12 },
-  sphinxie: { who: 'adjacent', speed: 10 },
-  maestrich: { who: 'behind', speed: 15 },
-  colossite: { who: 'behind', atk: 30, pow: 30 },
-  verdragon: { who: 'adjacent', atk: 20 },
+  nx1: { who: 'all', atk: -10, pow: -10 },
+  siphon: { who: 'all', atk: -10, pow: -10 },
+  harvester: { who: 'adjacent', atk: -50, pow: -50 },
+  dreadnought: { who: 'all', atk: -50, pow: -50 },
+  omega: { who: 'all', atk: -60, pow: -60 },
+  mara: { who: 'adjacent', speed: 20, tag: 'giant' },
+  leo: { who: 'row', atk: 30, pow: 30 },
+  tock: { who: 'adjacent', speed: 10 },
+  orrery: { who: 'all', speed: 15 },
+  mosswhisper: { who: 'adjacent', atk: 10 },
+  thornhoof: { who: 'adjacent', pow: 15 },
+  ysil: { who: 'behind', atk: 20, pow: 20 },
+  meowma: { who: 'behind', atk: 15 },
+  gorran: { who: 'front', pow: 20 },
+  taurus: { who: 'behind', atk: 15, pow: 15 },
+  eel: { who: 'adjacent', pow: 10 },
 };
-export const WHO_TEXT = { front: 'the ally in front', behind: 'the ally behind', adjacent: 'adjacent allies', nonadjacent: 'all allies not next to it' };
+export const WHO_TEXT = { front: 'the ally in front', behind: 'the ally behind', adjacent: 'adjacent allies', nonadjacent: 'all allies not next to it', row: 'allies in its row', all: 'all your other beings' };
 // Team grid: slots 1-3 (index 0-2) = front row, 4-6 (index 3-5) = back row; slot 4 is behind slot 1.
 // Adjacent = left/right/front/behind neighbour (no diagonals). Is slot j in zone "who" of slot i?
 export function inZone(who, i, j) {
@@ -353,6 +389,8 @@ export function inZone(who, i, j) {
   if (who === 'behind') return ci === cj && rj === ri + 1;
   if (who === 'adjacent') return adj;
   if (who === 'nonadjacent') return !adj;
+  if (who === 'row') return ri === rj;
+  if (who === 'all') return true;
   return false;
 }
 const ON_TEXT = {
@@ -366,7 +404,10 @@ const statTxt = (o, lvl) => Object.entries(o).filter(([k]) => k === 'atk' || k =
 export function triggerText(def, lvl = 1, pow = 1) {
   const t = TRIGGERS[def.id]; if (!t) return '';
   let when = ON_TEXT[t.on];
-  if (t.on === 'allyCast') when = t.from ? `When ${{ front: 'the ally in front', behind: 'the ally behind', adjacent: 'an adjacent ally' }[t.from]} casts` : `When an ally ${TYPES[t.type].name} mon casts`;
+  if (t.on === 'allyCast') {
+    const dim = t.type ? `${TYPES[t.type].name} ` : '';
+    when = t.from ? `When ${{ front: `the ${dim}ally in front`, behind: `the ${dim}ally behind`, adjacent: `an adjacent ${dim}ally` }[t.from]} casts` : `When an ally ${dim}being casts`;
+  }
   const d = t.do; let what = '';
   if (d.cast) what = 'it casts too (cooldown resets)';
   else if (d.multicast) what = `it casts ${d.multicast} times in a row (cooldown resets)`;
@@ -375,9 +416,9 @@ export function triggerText(def, lvl = 1, pow = 1) {
   else if (d.trinket) what = `gain a random tier ${Math.min(5, d.trinket + lvl - 1)} trinket`;
   else if (d.fx) what = Object.entries(d.fx).map(([k, v]) => `${FX[k].icon} ${FX[k].label} ${Math.round(fxValue(k, v, def, lvl, pow) * 10) / 10}${FX[k].unit || ''}`).join(', ');
   else if (d.pct) what = { dmg: `deals ${d.v}% of it as damage`, heal: `heals ${d.v}% of it`, shield: `gains ${d.v}% of it as shield` }[d.pct];
-  else if (d.grow) what = `this mon gets ${statTxt(d.grow, lvl)} for the run`;
-  else if (d.growAll) what = `all your ${TYPES[d.growAll.type].name} mons get ${statTxt(d.growAll, lvl)} for the run`;
-  else if (d.growFront) what = `the mon in front gets ${statTxt(d.growFront, lvl)} for the run`;
+  else if (d.grow) what = `this being gets ${statTxt(d.grow, lvl)} for the run`;
+  else if (d.growAll) what = `all your ${TYPES[d.growAll.type].name} beings get ${statTxt(d.growAll, lvl)} for the run`;
+  else if (d.growFront) what = `the being in front gets ${statTxt(d.growFront, lvl)} for the run`;
   else if (d.growRand) what = `a random ${TYPES[d.growRand.type].name} ally gets ${statTxt(d.growRand, lvl)} for the run`;
   else if (d.gold) what = `+${d.gold * lvl} gold`;
   return `${when}: ${what}.`;
@@ -385,11 +426,14 @@ export function triggerText(def, lvl = 1, pow = 1) {
 export function auraText(def, lvl = 1) {
   const a = AURAS[def.id]; if (!a) return '';
   const k = LV.pct[lvl], parts = [];
-  if (a.atk) parts.push(`+${Math.round(a.atk * k)}% ATK`);
-  if (a.pow) parts.push(`+${Math.round(a.pow * k)}% POW`);
+  const sg = (v) => (v > 0 ? '+' : '') + Math.round(v * k);
+  if (a.atk) parts.push(`${sg(a.atk)}% ATK`);
+  if (a.pow) parts.push(`${sg(a.pow)}% POW`);
   const one = a.who === 'front' || a.who === 'behind';
   if (a.speed) parts.push(`${one ? 'acts' : 'act'} ${Math.round(a.speed * k)}% faster`);
-  return `Ongoing: ${WHO_TEXT[a.who]} ${a.speed && !a.atk && !a.pow ? '' : (one ? 'gets ' : 'get ')}${parts.join(', ')}.`;
+  let who = WHO_TEXT[a.who];
+  if (a.tag) who = { adjacent: 'adjacent', all: 'all your' }[a.who] + ' ' + TAGS[a.tag].split(' ')[1] + 's';
+  return `Ongoing: ${who} ${a.speed && !a.atk && !a.pow ? '' : (one ? 'gets ' : 'get ')}${parts.join(', ')}.`;
 }
 
 export const RANKS = [
@@ -411,11 +455,11 @@ export const AVATARS = [
   { id: 'merchant', name: 'Merchant Mira', face: '👩‍💼', perk: '+8 gold every day.' },
   { id: 'scholar', name: 'Scholar Quill', face: '🧑‍🎓', perk: 'Shop shows 6 offers instead of 5.' },
   { id: 'breeder', name: 'Breeder Bea', face: '👩‍🌾', perk: 'Every merge adds +10% ATK and POW.' },
-  { id: 'coach', name: 'Coach Kip', face: '🧢', perk: 'Your front mon (slot 1) gets +30% ATK and POW.' },
+  { id: 'coach', name: 'Coach Kip', face: '🧢', perk: 'Your front being (slot 1) gets +30% ATK and POW.' },
   { id: 'gambler', name: 'Gambler Dex', face: '🎩', perk: 'First reroll each day is free.' },
   { id: 'mystic', name: 'Mystic Oona', face: '🧙‍♀️', perk: 'Start the run with a random tier 2 trinket.' },
-  { id: 'junkyard', name: 'Junkyard Jo', face: '👷', perk: 'Selling gives +3 gold per copy. Junk always in the run.' },
-  { id: 'tamer', name: 'Tamer Rex', face: '🤠', perk: 'Start with 2 random tier 1 mons.' },
+  { id: 'junkyard', name: 'Junkyard Jo', face: '👷', perk: 'Selling gives +3 gold per copy.' },
+  { id: 'tamer', name: 'Tamer Rex', face: '🤠', perk: 'Start with 2 random tier 1 beings.' },
 ];
 export const AVATAR = Object.fromEntries(AVATARS.map(a => [a.id, a]));
 
@@ -431,18 +475,18 @@ export const TRINKETS = [
   tk('lunchbox', 1, 'Lunchbox', '🍱', 'Team HP +6%.', { hp: 6 }),
   tk('pebblecharm', 1, 'Pebble Charm', '🪨', 'Start each battle with a shield of 5% team HP.', { shield: 5 }),
   tk('coinpurse', 1, 'Coin Purse', '🪙', '+4 gold every day.', { goldDay: 4 }),
-  tk('clover', 1, 'Lucky Clover', '🍀', 'Copies of your mons show up in the shop more often.', { copy: 10 }),
+  tk('clover', 1, 'Lucky Clover', '🍀', 'Copies of your beings show up in the shop more often.', { copy: 10 }),
   // tier 2
   tk('hourglass', 2, 'Hourglass', '⏳', 'Your team acts 7% faster.', { speed: 7 }),
   tk('thickhide', 2, 'Thick Hide', '🦏', 'Team HP +12%.', { hp: 12 }),
-  tk('prism', 2, 'Prism', '🔷', 'All type effects +12% (not hits).', { fxp: 12 }),
-  tk('leaderbadge', 2, 'Leader Badge', '🎖️', 'Slot 1 mon gets +30% ATK and POW.', { slot1: 30 }),
+  tk('prism', 2, 'Prism', '🔷', 'All effects +12% (not hits).', { fxp: 12 }),
+  tk('leaderbadge', 2, 'Leader Badge', '🎖️', 'Slot 1 being gets +30% ATK and POW.', { slot1: 30 }),
   tk('fatwallet', 2, 'Fat Wallet', '👛', '+8 gold every day.', { goldDay: 8 }),
   tk('dice', 2, 'Loaded Dice', '🎲', '1 free reroll every day.', { rerolls: 1 }),
   // tier 3 (+ one type charm per type, generated below)
   tk('spikedcollar', 3, 'Spiked Collar', '⛓️', 'Your hits deal +12% damage.', { dmg: 12 }),
   tk('openingact', 3, 'Opening Act', '🎬', 'Your team acts 50% faster during the first 4 seconds.', { open: 50 }),
-  tk('rearguard', 3, 'Rear Guard', '🛡️', 'Slot 6 mon gets +40% ATK and POW.', { slot6: 40 }),
+  tk('rearguard', 3, 'Rear Guard', '🛡️', 'Slot 6 being gets +40% ATK and POW.', { slot6: 40 }),
   tk('warmblanket', 3, 'Warm Blanket', '🧣', 'Start each battle with a shield of 12% team HP.', { shield: 12 }),
   tk('overtime', 3, 'Overtime Boots', '🥾', 'Take 50% less sudden death drain.', { sd: 50 }),
   tk('goldenegg', 3, 'Golden Egg', '🥚', '+10 gold after every win.', { winGold: 10 }),
@@ -450,22 +494,22 @@ export const TRINKETS = [
   // tier 4
   tk('wardrum', 4, 'War Drum', '🥁', 'Your team acts 12% faster.', { speed: 12 }),
   tk('heartlocket', 4, 'Heart Locket', '💗', 'Team HP +22%.', { hp: 22 }),
-  tk('crystalball', 4, 'Crystal Ball', '🔮', 'All type effects +25% (not hits).', { fxp: 25 }),
+  tk('crystalball', 4, 'Crystal Ball', '🔮', 'All effects +25% (not hits).', { fxp: 25 }),
   tk('secondwind', 4, 'Second Wind', '🌬️', 'Once per battle, heal 15% team HP when under 30%.', { wind: 15 }),
   tk('berserker', 4, 'Berserker Mask', '👺', 'Your hits deal +30% damage while under 50% HP.', { rage: 30 }),
   tk('treasuremap', 4, 'Treasure Map', '🗺️', 'The shop shows 1 more offer.', { offers: 1 }),
   // tier 5
-  tk('crown', 5, 'Crown of Kings', '👑', 'Hits +15%, type effects +15%, team HP +10%.', { dmg: 15, fxp: 15, hp: 10 }),
+  tk('crown', 5, 'Crown of Kings', '👑', 'Hits +15%, effects +15%, team HP +10%.', { dmg: 15, fxp: 15, hp: 10 }),
   tk('timeturner', 5, 'Time Turner', '⌛', 'Your team acts 18% faster.', { speed: 18 }),
   tk('phoenixfeather', 5, 'Phoenix Feather', '🪶', 'Once per battle, heal 30% team HP when under 30%.', { wind: 30 }),
   tk('dragonscale', 5, 'Dragon Scale', '🐉', 'Team HP +10% and start with a shield of 25% team HP.', { hp: 10, shield: 25 }),
-  tk('elementalorb', 5, 'Elemental Orb', '🌈', 'All type effects +40% (not hits).', { fxp: 40 }),
+  tk('elementalorb', 5, 'Elemental Orb', '🌈', 'All effects +40% (not hits).', { fxp: 40 }),
   tk('goldengoose', 5, 'Golden Goose', '🪿', '+15 gold every day and +10 after every win.', { goldDay: 15, winGold: 10 }),
   // tier 6: legendary, only from merging a tier 5 mon to level 3
-  tk('worldseed', 6, 'World Seed', '🌳', 'All your mons get +25% ATK and POW.', { all: 25 }),
+  tk('worldseed', 6, 'World Seed', '🌳', 'All your beings get +25% ATK and POW.', { all: 25 }),
   tk('clockwork', 6, 'Clockwork Heart', '⚙️', 'Your team acts 30% faster.', { speed: 30 }),
   tk('undying', 6, 'Undying Totem', '🗿', 'Once per battle, survive a lethal blow at 1 HP and heal 40% team HP.', { totem: 40 }),
-  tk('mirror', 6, 'Mirror of Echoes', '🪞', 'Every cast of your mons also echoes at 25% power.', { mirror: 25 }),
+  tk('mirror', 6, 'Mirror of Echoes', '🪞', 'Every cast of your beings also echoes at 25% power.', { mirror: 25 }),
   tk('dragonhoard', 6, 'Dragon Hoard', '💰', '+25 gold every day and +15 after every win.', { goldDay: 25, winGold: 15 }),
   tk('secondsun', 6, 'Second Sun', '☀️', 'Start each battle with a shield of 30% team HP, and the enemy burning.', { shield: 30, sunburn: 4 }),
 ];
@@ -473,7 +517,7 @@ export const TRINKETS = [
 for (const [id, name, icon] of [['bottlecap', 'Bottle Cap', '🔘'], ['rubberduck', 'Rubber Duck', '🦆'], ['oldsock', 'Old Sock', '🧦'], ['bentspoon', 'Bent Spoon', '🥄'], ['lostbutton', 'Lost Button', '🪡'], ['banana', 'Banana Peel', '🍌']])
   TRINKETS.push(tk(id, 0, name, icon, 'Junk. Does nothing, but counts as a trinket.', {}));
 export const trinketPrice = (t) => 10 + 10 * t.tier;
-for (const t of Object.keys(TYPES)) TRINKETS.push(tk('charm_' + t, 3, `${TYPES[t].name} Charm`, TYPES[t].icon, `Your ${TYPES[t].name} mons get +30% ATK and POW.`, { type: { [t]: 30 } }));
+for (const t of Object.keys(TYPES)) TRINKETS.push(tk('charm_' + t, 3, `${TYPES[t].name} Charm`, TYPES[t].icon, `Your ${TYPES[t].name} beings get +30% ATK and POW.`, { type: { [t]: 30 } }));
 export const TRINKET = Object.fromEntries(TRINKETS.map(t => [t.id, t]));
 export const ECON_KEYS = ['goldDay', 'winGold', 'bench', 'rerolls', 'copy', 'offers'];
 export const isBattleTrinket = (id) => TRINKET[id] && Object.keys(TRINKET[id].fx).some(k => !ECON_KEYS.includes(k));
@@ -493,6 +537,16 @@ export function trinketBonus(ids) {
 export const BOT_NAMES = ['Ash Tray', 'Misty Window', 'Brock Lee', 'Gary Oakley', 'Professor Elm Street', 'Nurse Jolene', 'Team Rocket Science', 'Lass Vegas', 'Youngster Joey', 'Bug Catcher Bob', 'Hiker Mike', 'Swimmer Sue', 'Picnicker Pam', 'Cool Trainer Kai', 'Ace Ventura', 'Super Nerd Ned', 'Fisher Price', 'Biker Bart', 'Gentleman Jim', 'Beauty Bella', 'Psychic Sam', 'Blackbelt Bo', 'Juggler Jules', 'Rancher Rita', 'Tamer Tina', 'Ranger Rick', 'Burglar Barry', 'Scientist Sid', 'Sailor Sal', 'Camper Cam', 'Dragon Tamer Dot', 'Old Man Pete', 'Twin Tia & Tea', 'Cue Ball Carl', 'Rocker Roxy', 'Medium Maud', 'Channeler Chan', 'Bird Keeper Birdie', 'Artist Arturo', 'Collector Colin'];
 
 export const CHANGELOG = [
+  { v: '0.7', date: '2026-11-26', notes: [
+    'The multiverse update: the 11 types are gone. 100 new beings from 10 dimensions take their place: Fallen Earth, Martial Realm, Zodiac, Age of Giants, Elvenwood, Necro Machines, Junkverse, The Abyss, Dreamscape and Clockwork City. Every dimension is in every run.',
+    'Each dimension has its own trick: Last Stand, Ki and Transformations, Zodiac Alignment, Hunters and Giants, archer volleys, Assimilate, Scrap, Pressure, Sleep and Confusion, and Clockwork tempo. Synergies are hidden: find them!',
+    'New art: every dimension is drawn in its own style (comic, manga ink, starlight, woodcut, watercolor, chrome and neon, crayon stickers, bioluminescence, pastel dreams and blueprints).',
+    'Slower, clearer battles: cooldowns now run from 3s (fast) to 8s (very slow), with bigger numbers per cast. Team HP grows faster in later days.',
+    'Battle report: after each fight, see how much damage and support every being gave on both teams, with an MVP each. "Hide" now shows damage badges on the board.',
+    'Details now explain each being in plain words. Tap any bold keyword to see what it means.',
+    'Small numbers (prices, tiers, levels, stats) use a clearer font.',
+    'Prices and power were rebalanced with thousands of simulated runs. All numbers are placeholders: friends will be able to tune them soon.',
+  ] },
   { v: '0.6b', date: '2026-11-25', notes: [
     'Easier to read: brighter secondary text, darker backgrounds behind small text, slightly heavier small fonts, and darker reds and pinks behind white text. Every text colour now passes the standard contrast check for its size.',
   ] },
