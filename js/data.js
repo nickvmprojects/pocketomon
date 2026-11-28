@@ -1,5 +1,5 @@
 // Pocketomon — game data. All numbers are first-pass and tuned by tools/gen.mjs.
-export const VERSION = '0.7.6';
+export const VERSION = '0.7.7';
 
 export const RULES = {
   battleSeconds: 30,       // regular time
@@ -158,7 +158,7 @@ export const MONS = [
   // ---------------- NECRO MACHINES ----------------
   m('nx1', 'Unit NX-1', 'necro', 1, 3, 30, {}, {}, 'dmg', 'Laser for {dmg}. **Assimilate**: your other beings get -10% ATK and POW.', 'Step one of the plan. There are many steps.'),
   m('leech', 'Scrap Leech', 'necro', 1, 4, 6, { drain: 5 }, {}, 'support', 'Hits for {dmg}, drains {drain}% of your own team HP and gives twice that as **Shield**.', 'Feeds on its friends. Gives some back.'),
-  m('reaper', 'Reaper Drone', 'necro', 2, 4, 50, { selfHurt: 3 }, {}, 'dmg', 'Scythe for {dmg}. Costs {selfHurt}% of your team HP.', 'Efficient. Ruthless. Slightly suicidal.'),
+  m('reaper', 'Reaper Drone', 'necro', 2, 4, 36, { selfHurt: 4 }, {}, 'dmg', 'Scythe for {dmg}. Costs {selfHurt}% of your team HP.', 'Efficient. Ruthless. Slightly suicidal.'),
   m('siphon', 'Siphon Pylon', 'necro', 2, 5, 22, { strip: 20 }, {}, 'enabler', 'Hits for {dmg} and removes {strip}% of the enemy **Shield**. **Assimilate**: your other beings get -10% ATK and POW.', 'Drinks shields like soda.'),
   m('harvester', 'Harvester Mk3', 'necro', 3, 4.5, 75, {}, {}, 'dmg', 'Grinder for {dmg}. **Assimilate**: adjacent allies get -50% ATK and POW.', 'Do not stand next to it. Seriously.'),
   m('graft', 'Graft Surgeon', 'necro', 3, 6, 8, { heal: 40, sapGrowth: 10 }, {}, 'support', 'Hits for {dmg} and **Heals** {heal}, but removes {sapGrowth}% of your **Growth**.', 'Fixes you with parts of your friends.'),
@@ -217,6 +217,9 @@ export const MONS = [
 ];
 // v0.7.6: every cooldown is 0.5s slower than written above (3s -> 3.5s ... 8s -> 8.5s)
 export const CD_NERF = 0.5;
+// v0.7.7: permanent growth (shop triggers, battle gains) by tier. Low tiers grow slower so they need several days
+// of investment before they can carry; explosive power belongs to enabled tier 4-5 teams.
+export const TIER_GROWTH = [0, 0.5, 0.65, 0.8, 1, 1];
 for (const x of MONS) x.cd = Math.round((x.cd + CD_NERF) * 10) / 10;
 export const MON = Object.fromEntries(MONS.map(x => [x.id, x]));
 // Balance knobs written by tools/balance.mjs from simulations:
@@ -485,7 +488,7 @@ export const TRINKETS = [
   tk('coinpurse', 1, 'Coin Purse', '🪙', '+4 gold every day.', { goldDay: 4 }),
   tk('clover', 1, 'Lucky Clover', '🍀', 'Copies of your beings show up in the shop more often, even after level 3.', { copy: 10, noFade: 1 }),
   tk('coupon', 1, 'Coupon Book', '🎟️', 'The first being you buy each day costs 5 less.', { coupon: 5 }),
-  tk('pocketwatch', 1, 'Pocket Watch', '⏱️', 'Your slot 1 being starts every battle ready to cast. Each extra watch readies the next slot too.', { watch: 1 }),
+  tk('pocketwatch', 1, 'Pocket Watch', '⏱️', 'Your slot 1 being starts every battle ready to cast, but that first cast deals 90% less damage (its effects are full strength).', { watch: 1 }, 1),
   tk('sandbottle', 1, 'Bottle of Sand', '🏺', 'Enemy beings start every battle 1.5s behind.', { sand: 1.5 }),
   tk('spareparts', 1, 'Spare Parts', '🔧', 'Selling a being also gives you a junk trinket.', { spare: 1 }),
   // tier 2
@@ -500,26 +503,27 @@ export const TRINKETS = [
   tk('overtime', 3, 'Overtime Boots', '🥾', 'Take 50% less sudden death drain.', { sd: 50 }),
   tk('goldenegg', 3, 'Golden Egg', '🥚', '+10 gold after every win.', { winGold: 10 }),
   tk('backpack', 3, 'Big Backpack', '🎒', '+2 bench slots.', { bench: 2 }, 2),
-  tk('glasscannon', 3, 'Glass Cannon', '🔫', 'Team HP −25%, but every being\'s first cast each battle is echoed at full power.', { hp: -25, glass: 1 }),
+  tk('glasscannon', 3, 'Glass Cannon', '🔫', 'Team HP −25%, but every being\'s first cast each battle hits 50% harder.', { hp: -25, glass: 1 }),
   tk('lonewolf', 3, 'Lone Wolf', '🐺', 'If 3 or fewer beings fight, they act 40% faster.', { wolf: 40 }),
   tk('rainbow', 3, 'Rainbow Badge', '🌈', 'Every different dimension on your team counts as 1 more trinket.', { rainbow: 1 }),
   // tier 4
   tk('treasuremap', 4, 'Treasure Map', '🗺️', 'The shop shows 1 more offer.', { offers: 1 }, 2),
-  tk('twinfates', 4, 'Twin Fates', '♊', 'Two copies of the same being on your team (not merged) are twins: when one casts, the other echoes it at 60%.', { twin: 60 }),
+  tk('twinfates', 4, 'Twin Fates', '♊', 'Two copies of the same being on your team (not merged) are twins: when one casts, the other gains 1s of charge.', { twin: 1 }),
   tk('halloffame', 4, 'Hall of Fame', '🏛️', 'Every being at level 4 or higher counts as 1 more trinket, and gives +15 gold each time it levels up.', { fame: 1 }),
   tk('faultline', 4, 'Fault Line', '🪨', 'The enemy back row acts 25% slower.', { fault: 25 }),
   // tier 5
   tk('chimera', 5, 'Chimera Crown', '👑', 'Your slot 1 being also counts as a Giant, a Hunter, an Archer and every Zodiac element.', { chimera: 1 }),
   tk('timeturner', 5, 'Time Turner', '⌛', 'The first time your HP drops below 50%, all your beings are instantly ready to cast.', { turn: 1 }),
   tk('phoenixfeather', 5, 'Phoenix Feather', '🪶', 'Once per battle, heal 30% team HP when under 30%.', { wind: 30 }),
+  tk('satchel', 5, 'Merchant\'s Satchel', '👜', 'You can buy 1 more trinket from the shop each day.', { tbuy: 1 }, 1),
   tk('goldengoose', 5, 'Golden Goose', '🪿', '+15 gold every day and +10 after every win.', { goldDay: 15, winGold: 10 }),
   // tier 6: legendary, one of each per run. From level 3 merges of tier 5 beings and every level past 3.
   tk('undying', 6, 'Undying Totem', '🗿', 'Once per battle, survive a lethal blow at 1 HP and heal 40% team HP.', { totem: 40 }, 1),
-  tk('mirror', 6, 'Mirror of Echoes', '🪞', 'Every cast of your beings also echoes at 25% power.', { mirror: 25 }, 1),
+  tk('mirror', 6, 'Mirror of Echoes', '🪞', 'Echoes and copies made by your beings are 50% stronger.', { mirror: 50 }, 1),
   tk('dragonhoard', 6, 'Dragon Hoard', '💰', '+25 gold every day and +15 after every win.', { goldDay: 25, winGold: 15 }, 1),
-  tk('paragon', 6, 'Paragon\'s Laurel', '🏅', 'Your highest-level being casts everything twice.', { paragon: 1 }, 1),
+  tk('paragon', 6, 'Paragon\'s Laurel', '🏅', 'Your highest-level being acts 15% faster for every level above 2.', { paragon: 1 }, 1),
   tk('clockwork', 6, 'Clockwork Heart', '⚙️', 'Whenever one of your beings casts, your least-charged being gains 0.3s.', { gear: 0.3 }, 1),
-  tk('anvil', 6, 'Starforge Anvil', '⚒️', 'Every copy that levels up a being past level 3 also adds +10% ATK and POW to it.', { anvil: 10 }, 1),
+  tk('anvil', 6, 'Starforge Anvil', '⚒️', 'Every merge past level 3 also adds +10% ATK and POW to the merged being.', { anvil: 10 }, 1),
 ];
 // tier 0 = junk trinkets: no effect, stackable, only from junk-trinket triggers (they still fire "trinket gained")
 for (const [id, name, icon] of [['bottlecap', 'Bottle Cap', '🔘'], ['rubberduck', 'Rubber Duck', '🦆'], ['oldsock', 'Old Sock', '🧦'], ['bentspoon', 'Bent Spoon', '🥄'], ['lostbutton', 'Lost Button', '🪡'], ['banana', 'Banana Peel', '🍌']])
@@ -536,7 +540,7 @@ const RELICS = {
   junk: ['Scrap Magnet', '🧲', 'Start every battle with 1 Scrap per trinket you own.'],
   abyss: ['Anchor', '⚓', 'The enemy starts with 3 Pressure, and cashing in Pressure only uses half of it.'],
   dream: ['Lullaby Box', '🎶', 'Your Sleep effects last 50% longer.'],
-  clock: ['Metronome', '🎼', 'Every 5th cast your team makes is echoed at full power.'],
+  clock: ['Metronome', '🎼', 'Every 5th cast your team makes gives your other beings 0.3s of charge.'],
 };
 for (const t of Object.keys(TYPES)) { const [name, icon, desc] = RELICS[t]; TRINKETS.push(tk('relic_' + t, 3, name, icon, `${TYPES[t].name} relic. ${desc}`, { ['r_' + t]: 1 })); }
 // saves from before v0.7.6: removed trinkets become a new one of the same tier
@@ -550,7 +554,7 @@ export const TRINKET_MIGRATE = {
 };
 for (const t of Object.keys(TYPES)) TRINKET_MIGRATE['charm_' + t] = 'relic_' + t;
 export const TRINKET = Object.fromEntries(TRINKETS.map(t => [t.id, t]));
-export const ECON_KEYS = ['goldDay', 'winGold', 'bench', 'rerolls', 'copy', 'offers', 'noFade', 'coupon', 'spare', 'wish', 'hand', 'anvil'];
+export const ECON_KEYS = ['goldDay', 'winGold', 'bench', 'rerolls', 'copy', 'offers', 'noFade', 'coupon', 'spare', 'wish', 'hand', 'anvil', 'tbuy'];
 export const isBattleTrinket = (id) => TRINKET[id] && Object.keys(TRINKET[id].fx).some(k => !ECON_KEYS.includes(k));
 // Sum of all trinket effects (charms merge per type)
 export function trinketBonus(ids) {
@@ -568,6 +572,17 @@ export function trinketBonus(ids) {
 export const BOT_NAMES = ['Ash Tray', 'Misty Window', 'Brock Lee', 'Gary Oakley', 'Professor Elm Street', 'Nurse Jolene', 'Team Rocket Science', 'Lass Vegas', 'Youngster Joey', 'Bug Catcher Bob', 'Hiker Mike', 'Swimmer Sue', 'Picnicker Pam', 'Cool Trainer Kai', 'Ace Ventura', 'Super Nerd Ned', 'Fisher Price', 'Biker Bart', 'Gentleman Jim', 'Beauty Bella', 'Psychic Sam', 'Blackbelt Bo', 'Juggler Jules', 'Rancher Rita', 'Tamer Tina', 'Ranger Rick', 'Burglar Barry', 'Scientist Sid', 'Sailor Sal', 'Camper Cam', 'Dragon Tamer Dot', 'Old Man Pete', 'Twin Tia & Tea', 'Cue Ball Carl', 'Rocker Roxy', 'Medium Maud', 'Channeler Chan', 'Bird Keeper Birdie', 'Artist Arturo', 'Collector Colin'];
 
 export const CHANGELOG = [
+  { v: '0.7.7', date: '2026-11-28', notes: [
+    'Balance: fights shouldn\'t end in under a second anymore. You can buy one trinket a day from the shop (rerolls no longer restock it). New tier 5 Merchant\'s Satchel lets you buy one more.',
+    'Pocket Watch is one per run, and the readied first cast deals 90% less damage (its effects are full strength).',
+    'Trinkets no longer make beings cast extra times: repeat casts only come from combinations of beings. Mirror of Echoes now makes your beings\' echoes 50% stronger, Paragon\'s Laurel speeds up your highest-level being per level, Glass Cannon makes first casts hit 50% harder, Twin Fates and Metronome give charge instead of casts.',
+    'Reaper Drone hits for 36 instead of 50 and costs 4% team HP (it was winning day 3 fights alone).',
+    'Tier 1-3 beings grow more slowly from permanent growth (tier 1 at half speed, tier 2 at 65%, tier 3 at 80%), so they need more days of investment to carry a team.',
+    'New opponents: a tougher kind of bot now plays like a committed player (hunts copies and trinkets, builds around its dimensions), so ranked feels closer to what you can build.',
+    'Levels past 3 now merge like the rest: two copies at the same level make the next one (two level 3s → level 4, two level 4s → level 5...). Each merge past level 3 gives a legendary trinket pick.',
+    'Beings you already raised past level 3 in v0.7.6 keep their level.',
+    'Fixed: an event where every choice was blocked (team and bench full) now offers a Pass (+10 gold) so you are never stuck.',
+  ] },
   { v: '0.7.6', date: '2026-11-27', notes: [
     'Levels past 3: once a being is level 3, every extra copy you buy adds a level (4, 5, 6... no cap), and every level past 3 gives a legendary (tier 6) trinket pick.',
     'Beings you own at level 3 or higher show up only 25% as often in the shop (Lucky Clover cancels this).',

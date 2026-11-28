@@ -1,13 +1,13 @@
 // Pocketomon UI — v0.7.6 ("Rift" presentation from v0.7.5). Same rules and engine as v0.7; the old UI lives in /classic/.
 // Mobile first. Taps only ever select; moving, buying and selling is drag-only (plus the Buy/Sell buttons).
-import * as D from './data.js?v=0.7.6';
-import * as R from './run.js?v=0.7.6';
-import { simulate, previewTeam } from './battle.js?v=0.7.6';
-import { monSvg } from './art.js?v=0.7.6';
-import { LIBRARY } from './snapdata.js?v=0.7.6';
-import { IC, SIGIL, COORD } from './icons.js?v=0.7.6';
-import { sfx, unlock as unlockAudio, setMuted } from './sfx.js?v=0.7.6';
-import { FxLayer } from './fx.js?v=0.7.6';
+import * as D from './data.js?v=0.7.7';
+import * as R from './run.js?v=0.7.7';
+import { simulate, previewTeam } from './battle.js?v=0.7.7';
+import { monSvg } from './art.js?v=0.7.7';
+import { LIBRARY } from './snapdata.js?v=0.7.7';
+import { IC, SIGIL, COORD } from './icons.js?v=0.7.7';
+import { sfx, unlock as unlockAudio, setMuted } from './sfx.js?v=0.7.7';
+import { FxLayer } from './fx.js?v=0.7.7';
 
 const { MON, TYPES, FX, RULES } = D;
 const $app = document.getElementById('app');
@@ -159,15 +159,13 @@ function detail(m, ctx) {
   if (ctx.zone === 'shop') {
     const price = R.offerPrice(run, def);
     const copies = R.owned(run).filter(o => o.m.id === m.id && o.m.lvl === 1).length;
-    const big = R.owned(run).find(o => o.m.id === m.id && o.m.lvl >= 3);
-    if (big) note = `<div class="note good">Feeds your level ${big.m.lvl} ${def.name}: level ${big.m.lvl + 1} and a legendary trinket pick!</div>`;
-    else if (copies >= 2) note = `<div class="note good">You own 2 copies: buying this merges them into level 2!</div>`;
+    if (copies >= 2) note = `<div class="note good">You own 2 copies: buying this merges them into level 2!</div>`;
     else if (copies === 1) note = `<div class="note">You own 1 copy. Get 3 to merge into level 2.</div>`;
     btns = `<button class="primary" data-act="buy" ${run.gold < price ? 'disabled' : ''}>Buy · <span class="g">${IC.coin}${price}</span></button>
       <button data-act="lock">${ctx.locked ? IC.unlock + ' Unlock' : IC.lock + ' Lock for next day'}</button>`;
   } else if ((ctx.zone === 'team' || ctx.zone === 'bench') && !ctx.info) {
     btns = `<button data-act="sell">${IC.trash} Sell · <span class="g">+${R.sellValue(run, m)}</span></button>`;
-    note = `<div class="note dim">${lvl === 1 ? 'Merge 3 copies → level 2.' : lvl === 2 ? 'Merge with another level 2 → level 3.' : 'Every extra copy you buy adds a level (and a legendary trinket pick).'}</div>`;
+    note = `<div class="note dim">${lvl === 1 ? 'Merge 3 copies → level 2.' : lvl === 2 ? 'Merge with another level 2 → level 3.' : `Merge with another level ${lvl} copy → level ${lvl + 1} (and a legendary trinket pick).`}</div>`;
   }
   const unknown = ctx.zone === 'dex' && silo(m.id);
   return `<div class="detail ${ctx.sheet ? 'sheet' : ''} ${ctx.zone === 'shop' ? 'top' : ''} ${unknown ? 'unknown' : ''}" style="${dimStyle(def.type)}">
@@ -191,7 +189,7 @@ function trinketIcons(list) {
   return Object.entries(counts).map(([t, n]) => `<span class="trk ${D.TRINKET[t].tier === 0 ? 'junk' : ''}" data-act="trinket" data-id="${t}">${D.TRINKET[t].icon}${n > 1 ? `<sub>×${n}</sub>` : ''}</span>`).join('');
 }
 function trinketCard(o, sel) {
-  if (!o || !o.id) return `<div class="card sold tcard">SOLD</div>`;
+  if (!o || !o.id) return `<div class="card sold tcard">SOLD<small>trinkets: 1 a day</small></div>`;
   const t = D.TRINKET[o.id], price = D.trinketPrice(t);
   return `<div class="card tcard ${sel ? 'sel' : ''}" data-z="tshop" data-i="0">
     <div class="c-top"><span class="tierpill t${t.tier}">T${t.tier}</span></div>
@@ -203,8 +201,8 @@ function trinketSheet(o) {
     <div class="d-head"><div class="d-art ticonbig">${t.icon}</div><div class="d-id"><div class="d-coord">TRINKET</div><div class="d-name">${esc(t.name)}</div>
     <div class="d-meta"><span class="tierpill t${t.tier}">Tier ${t.tier} trinket</span></div></div></div>
     <div class="trigline">${esc(t.desc)}</div>
-    <div class="note dim">Trinkets last the whole run. Buying one also fires "when you gain a trinket" triggers.</div>
-    <div class="btns"><button class="primary" data-act="buytrinket" ${run.gold < price ? 'disabled' : ''}>Buy · <span class="g">${IC.coin}${price}</span></button>
+    <div class="note dim">Trinkets last the whole run. You can buy ${R.trinketBuysLeft(run) > 1 ? R.trinketBuysLeft(run) + ' more' : 'one'} today; rerolls don't restock this slot.</div>
+    <div class="btns"><button class="primary" data-act="buytrinket" ${run.gold < price || R.trinketBuysLeft(run) <= 0 ? 'disabled' : ''}>Buy · <span class="g">${IC.coin}${price}</span></button>
     <button data-act="locktrinket">${o.locked ? IC.unlock + ' Unlock' : IC.lock + ' Lock for next day'}</button></div></div>`;
 }
 // wins as a row of diamonds, lives as hearts: the whole run at a glance
@@ -254,7 +252,7 @@ function render() {
   if (ui.screen === 'title' || !run) return renderTitle();
   if (run.phase === 'over') return renderOver();
   discover();
-  if (run.phase === 'event') { renderEvent(); return playCelebrations(); }
+  if (run.phase === 'event') { if (R.ensurePassable(run)) saveRun(); renderEvent(); return playCelebrations(); }
   renderShop(); playCelebrations();
 }
 
@@ -431,8 +429,6 @@ function renderShop() {
     <div class="choices">${tq.options.map(id => { const t = D.TRINKET[id]; return `<button class="choice row" data-act="picktrinket" data-id="${id}">
       <div class="c-ic">${t.icon}</div><div class="c-t">${esc(t.name)} <span class="ttier t${t.tier}">T${t.tier}</span></div><div class="c-d">${esc(t.desc)}</div></button>`; }).join('')}</div></div></div>` : '';
   const ownTag = (id) => {
-    const big = R.owned(run).find(x => x.m.id === id && x.m.lvl >= 3);
-    if (big) return 'MERGE ▲ LV' + (big.m.lvl + 1);
     const n = R.owned(run).filter(x => x.m.id === id && x.m.lvl === 1).length; return n ? (n >= 2 ? 'MERGE ▲' : `own ${n}`) : '';
   };
   const nOff = run.shop.length + 1;
@@ -491,11 +487,11 @@ function helpHtml() {
   <p>Each <b>day</b>: pick 1 of 3 <b>event</b> choices, shop for beings, then fight <b>one 30 second battle</b> against another trainer's snapshot from the same day. Win 10 battles to become Champion; lose 5 lives and the run ends.</p>
   <p><b>Battles</b> are automatic. Every being casts its move each time its cooldown fills, in slot order (slot 1 first). All beings hit the enemy team's <b>shared HP bar</b>. After 30s, <b>sudden death</b> drains both teams faster every second. Ties go to you.</p>
   <p><b>KO time</b>: every win is graded by how fast you emptied their HP: <b>S</b> under 6s, <b>A</b> under 10s, <b>B</b> under 15s, <b>C</b> under 30s, <b>D</b> in sudden death. Great teams win in seconds: chase your best KO.</p>
-  <p><b>Shop</b>: up to 6 beings on your team, extras wait on the bench. Each shop copy has its own ATK and POW roll. Buy <b>3 copies</b> of a being to merge it into <b>level 2</b>, and two level 2s into <b>level 3</b>. After that, <b>every extra copy adds a level</b> (4, 5, 6... no cap), each with a legendary trinket pick. Beings you own at level 3+ show up less often in the shop. Merging keeps the best ATK and POW of the copies. Tier never changes. Lock offers you want to keep for tomorrow; unspent gold carries over.</p>
+  <p><b>Shop</b>: up to 6 beings on your team, extras wait on the bench. Each shop copy has its own ATK and POW roll. Tiers 1-3 grow more slowly than tiers 4-5 from permanent growth effects. Buy <b>3 copies</b> of a being to merge it into <b>level 2</b>, and two level 2s into <b>level 3</b>. After that, <b>two copies at the same level merge into the next one</b> (two level 3s → level 4, two level 4s → level 5... no cap), each with a legendary trinket pick. Levels past 3 are meant to be rare: beings you own at level 3+ show up less often in the shop. Merging keeps the best ATK and POW of the copies. Tier never changes. Lock offers you want to keep for tomorrow; unspent gold carries over.</p>
   <p><b>The multiverse</b>: beings come from <b>10 dimensions</b>, each with its own style and tricks, and every dimension is in every run. Beings from the same dimension often work well together, and some combos cross dimensions. Nothing tells you which: experiment! The sigils next to "Team" count how many beings of each dimension you field.</p>
   <p><b>Tap</b> any card to see its details (tap another to switch, ✕ or empty space to close). Taps never move or buy anything.</p>
   <p><b>Drag</b> to act: drag a shop card onto an empty team or bench slot to buy it there (or onto a slot holding 2 copies to merge). Drag your beings onto other slots to swap them, or onto the bottom bar to sell. Releasing anywhere else cancels. The details panel also has Buy and Sell buttons.</p>
-  <p><b>Trinkets</b>: they bend the rules instead of adding flat stats. Each dimension has a <b>relic</b> that changes how its trick works. You can own several of the same trinket (effects stack), except Big Backpack and Treasure Map (2 max) and tier 6 legendaries (1 each). One is always for sale in the shop. Some beings make junk trinkets (no effect, but they count for "when you gain a trinket" triggers) or find real ones.</p>
+  <p><b>Trinkets</b>: you can buy <b>one trinket a day</b> from the shop (rerolls don't restock it). They bend the rules instead of adding flat stats, and they never make beings cast extra times: repeat casts come from combinations of beings. Each dimension has a <b>relic</b> that changes how its trick works. You can own several of the same trinket (effects stack), except Big Backpack and Treasure Map (2 max) and tier 6 legendaries (1 each). One is always for sale in the shop. Some beings make junk trinkets (no effect, but they count for "when you gain a trinket" triggers) or find real ones.</p>
   <p><b>Team grid</b>: slots 1-3 are the front row and cast first; 4-6 are the back row. In battle the front rows face each other across the rift. "Behind" means the slot directly behind; "adjacent" means left, right, front or behind (no diagonals).</p>
   <p><b>Triggers</b> (bell icon): some beings react to things (being bought or sold, levelling up, trinkets, rerolls, wins, allies casting, low HP, sudden death...). In battle a gold link shows which ally set a trigger off. A being is never triggered by a copy of itself, and fires at most once per chain. <b>Auras</b> (sun icon) constantly buff nearby (or far) allies.</p>
   <p><b>Chains</b>: when many casts and triggers fire close together, the CHAIN counter climbs (and so does the music).</p>
@@ -503,7 +499,7 @@ function helpHtml() {
   <p><b>Buffs</b>: numbers on cards and in the details are what the being will have when the battle starts (auras, charms, slot trinkets and growth included). The more a number is buffed, the brighter it glows.</p>
   <p><b>In battle</b>: tap any being to see its live stats; the small number on each being is the damage it has dealt so far. Pause, 2× and Skip are at the bottom. After the fight, "Hide" lets you inspect the board.</p>
   <p><b>Multidex</b>: every being you own is <b>caught</b> for good; beings you meet in shops or battles are <b>seen</b>. Uncaught beings show as silhouettes.</p>
-  <p><b>Merge rewards</b>: every merge lets you pick 1 of 3 <b>trinkets</b> of the merged being's tier. Reaching level 3 gives a single pick one tier higher, up to legendary tier 6. Every level past 3 gives a tier 6 pick. Trinkets last the whole run.</p>
+  <p><b>Merge rewards</b>: every merge lets you pick 1 of 3 <b>trinkets</b> of the merged being's tier. Reaching level 3 gives a single pick one tier higher, up to legendary tier 6. Every merge past level 3 gives a tier 6 pick. Trinkets last the whole run.</p>
   <p><b>Prices</b>: a being costs about 10 × its tier, ±5 depending on how strong it is. Selling refunds half per copy.</p>
   <p><b>Ranked</b>: opponents are picked to match your team's hidden strength (a bit above it at higher ranks). Your rank moves when the run ends: <b>6+ wins → rank up</b>, <b>5 wins → rank holds</b>, <b>under 5 → rank down</b>. Ranks: ${D.RANKS.map(r => r.icon + ' ' + r.name).join(' → ')}.</p>
   <p><b>After a battle</b>, the result shows how much damage and support (heals, shields, buffs) each being gave on both teams, with an MVP each.</p>
@@ -692,7 +688,6 @@ function canDrop(src, z, i) {
   if (src.zone === 'shop') {
     const m = slotsOf(z)[i], id = run.shop[src.i].mon.id;
     if (!m) return true;
-    if (m.id === id && m.lvl >= 3) return true; // feeds a level 3+ being
     return m.id === id && m.lvl === 1 && R.owned(run).filter(o => o.m.id === id && o.m.lvl === 1).length >= 2; // completes a merge
   }
   return !(src.zone === z && src.i === i);

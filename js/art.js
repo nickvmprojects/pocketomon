@@ -3,9 +3,9 @@
 // style decides how they are painted (comic halftone, manga ink, starlight, woodcut, watercolor,
 // chrome & neon, crayon sticker, bioluminescence, pastel blur, blueprint). Each portrait is cached
 // and served as an <img> so its filters are only rendered once.
-import { MON } from './data.js?v=0.7.6';
-import { makeRng, hash } from './rng.js?v=0.7.6';
-import { SPECS, HAND } from './artspecs.js?v=0.7.6';
+import { MON } from './data.js?v=0.7.7';
+import { makeRng, hash } from './rng.js?v=0.7.7';
+import { SPECS, HAND } from './artspecs.js?v=0.7.7';
 
 const f1 = (n) => Math.round(n * 10) / 10;
 const cache = new Map();
@@ -624,7 +624,7 @@ const DEFAULT_PAL = {
   clock: {},
 };
 
-function render(id) {
+function render(id, partsOnly) {
   const def = MON[id], dim = def.type, spec = SPECS[id] || { arch: 'blob' };
   const r = makeRng(hash(id) ^ 0x5bd1e995);
   const pal = pal3(spec, DEFAULT_PAL[dim] || {});
@@ -655,6 +655,7 @@ function render(id) {
   // style post-processing around the figure
   const solid = body.shapes.filter(s => s.r !== 'line' && s.r !== 'tube' && s.r !== 'tubeFill' && s.r !== 'ring' && s.r !== 'beam' && s.r !== 'glow');
   const shadeFill = (pat) => `<g mask="url(#shade)">${solid.map(s => `<path d="${s.d}" fill="url(#${pat})" ${s.tf ? `transform="${s.tf}"` : ''}/>`).join('')}</g>`;
+  if (partsOnly) return { dim, faces: body.faces, svg: `<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><defs>${defs}</defs>${fig}${faces}</svg>` };
   let out = '';
   switch (dim) {
     case 'fallen': out = fig + shadeFill('ht') + faces + '<rect width="200" height="200" fill="#3a2210" filter="url(#grunge)" opacity=".45"/>'; break;
@@ -670,6 +671,9 @@ function render(id) {
   }
   return `<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><defs>${defs}</defs>${bg}${out}</svg>`;
 }
+
+// figure without background + eye positions (for pixel sprites; hand-drawn art isn't split)
+export function monParts(id) { return HAND[id] ? null : render(id, true); }
 
 // full SVG source (also used by tools to export a gallery)
 export function monSource(id) {

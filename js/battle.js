@@ -4,7 +4,7 @@
 // team is at 0 HP. Statuses tick once per second. Ties go to side A (the player).
 // v0.7: dimension mechanics (Ki, Alignment, tags, Assimilate, Scrap, Pressure, Sleep, Tempo) and
 // per-being damage/support tracking for the battle report.
-import { MON, TYPES, RULES, LV, ECHO_KEYS, fxValue, trinketBonus, TRIGGERS, AURAS, inZone } from './data.js?v=0.7.6';
+import { MON, TYPES, RULES, LV, ECHO_KEYS, fxValue, trinketBonus, TRIGGERS, AURAS, inZone } from './data.js?v=0.7.7';
 
 const DT = 0.1;
 const TPS = 10; // ticks per second
@@ -56,9 +56,10 @@ function makeSide(team, side) {
   s.dreamK = 1 + 0.5 * (B.r_dream || 0);
   s.metro = B.r_clock ? Math.max(3, 6 - B.r_clock) : 0;
   s.giantK = 1 + (B.r_giants || 0);
-  // Twin Fates: copies of the same being on the team echo each other; Paragon: highest level casts twice
+  // Twin Fates: copies of the same being on the team charge each other; Paragon: highest level casts faster per level
+  // (v0.7.7: trinkets never grant extra casts; repeat casts only come from combinations of beings)
   if (B.twin) for (const u of U) u.twins = U.filter(o => o !== u && o.def.id === u.def.id);
-  if (B.paragon && U.length) { const top = U.reduce((a, o) => (o.lvl > a.lvl ? o : a)); top.paragon = true; }
+  if (B.paragon && U.length) { const top = U.reduce((a, o) => (o.lvl > a.lvl ? o : a)); top.spd *= 1 + 0.15 * Math.max(0, top.lvl - 2); }
   // team-wide passives
   s.shieldCapPct = Math.max(RULES.shieldCap * 100, ...has('shieldCap').map(u => u.def.pas.shieldCap));
   s.ohFull = has('overheal').length > 0;
@@ -333,6 +334,10 @@ export function simulate(teamA, teamB, opts = {}) {
     if (fx.vsDebuff && (foe.expose > 0 || foe.weaken > 0)) mult *= 1 + val(u, 'vsDebuff', fx.vsDebuff, own) / 100;
     if (fx.volleyAdj) mult *= 1 + val(u, 'volleyAdj', fx.volleyAdj, own) / 100 * own.units.filter(o => o && hasTag(o, 'archer') && inZone('adjacent', u.pos, o.pos)).length;
     if (fx.spendScrap && own.scrap >= 1) { own.scrap -= 1; mult *= 1 + val(u, 'spendScrap', fx.spendScrap, own) / 100; }
+    // Pocket Watch: the readied first cast deals 90% less damage (it's for setting off effects)
+    if (u.watchFirst && !echoed) mult *= 0.1;
+    // Glass Cannon: each being's first cast hits 50% harder
+    if (own.bonus.glass && !echoed && !u.glassUsed) mult *= 1 + 0.5 * own.bonus.glass;
     // Mixtape: a follow-up right after an ally from another dimension hits harder
     if (own.bonus.mix && !echoed && own.prevType && own.prevType !== d.type) mult *= 1 + own.bonus.mix / 100;
     // Confused: this hit lands on your own team instead
@@ -348,6 +353,7 @@ export function simulate(teamA, teamB, opts = {}) {
     u.casts++;
     if (own.bonus.r_elven && hasTag(u, 'archer')) heal(own, own.maxHp * 0.01 * own.bonus.r_elven, true); // Moonwell
     if (!echoed) {
+      u.watchFirst = false; u.glassUsed = true;
       own.castCount++; own.prevType = d.type;
       if (d.type === 'martial') addKi(own, u, 1);
     }
@@ -363,19 +369,16 @@ export function simulate(teamA, teamB, opts = {}) {
       }
       for (const [tgt, key] of targets) {
         if (!tgt) continue;
-        const pct = Math.min(125, val(u, key, fx[key], { prism: 1 }));
+        const pct = Math.min(125, val(u, key, fx[key], { prism: 1 })) * (1 + (own.bonus.mirror || 0) / 100);
         cast(tgt, scale * pct / 100, u, t);
       }
-      if (fx.copyLast && own.lastCast && own.lastCast !== u) cast(own.lastCast, scale * Math.min(125, val(u, 'copyLast', fx.copyLast, { prism: 1 })) / 100, u, t);
+      if (fx.copyLast && own.lastCast && own.lastCast !== u) cast(own.lastCast, scale * Math.min(125, val(u, 'copyLast', fx.copyLast, { prism: 1 })) * (1 + (own.bonus.mirror || 0) / 100) / 100, u, t);
       if (fx.volley) for (const o of own.units) if (o && o !== u && hasTag(o, 'archer')) cast(o, scale, u, t);
       if (fx.every4 && u.casts % 4 === 0) cast(u, scale, u, t);
       if (u.oc > 0) { u.oc = 0; cast(u, scale, u, t); }
-      if (own.bonus.mirror) cast(u, scale * own.bonus.mirror / 100, u, t); // Mirror of Echoes (never chains)
-      // v0.7.6 trinkets: extra casts are echoes, so they never chain into more echoes
-      if (own.bonus.glass && !u.glassUsed) { u.glassUsed = true; cast(u, scale, u, t); } // Glass Cannon
-      if (u.twins) for (const o of u.twins) cast(o, scale * own.bonus.twin / 100, u, t); // Twin Fates
-      if (u.paragon) cast(u, scale, u, t); // Paragon's Laurel
-      if (own.metro && own.castCount % own.metro === 0) cast(u, scale, u, t); // Metronome
+      // v0.7.7: trinkets don't add casts. Twin Fates and Metronome give charge instead.
+      if (u.twins) for (const o of u.twins) o.charge += own.bonus.twin; // Twin Fates (seconds)
+      if (own.metro && own.castCount % own.metro === 0) for (const o of own.units) if (o && o !== u) o.charge += 0.3; // Metronome
       if (own.bonus.gear) { // Clockwork Heart
         let lo = null; for (const o of own.units) if (o && o !== u && (!lo || o.charge / o.cd < lo.charge / lo.cd)) lo = o;
         if (lo) lo.charge += own.bonus.gear;
@@ -403,7 +406,7 @@ export function simulate(teamA, teamB, opts = {}) {
   }
   for (const side of S) {
     const foe = S[1 - side.side], B = side.bonus;
-    if (B.watch) { let n = B.watch; for (const o of side.units) if (o && n > 0) { o.charge = o.cd; n--; } } // Pocket Watch
+    if (B.watch) { const o = side.units.find(Boolean); if (o) { o.charge = o.cd; o.watchFirst = true; } } // Pocket Watch (max 1)
     if (B.sand) for (const o of foe.units) if (o) o.charge -= B.sand; // Bottle of Sand
     if (B.r_junk) add(side, 'scrap', side.ntrink * B.r_junk); // Scrap Magnet
     if (B.r_abyss) add(foe, 'pressure', 3 * B.r_abyss); // Anchor

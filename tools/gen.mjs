@@ -2,11 +2,11 @@
 // snapshots. Prints balance stats and (with --write) saves js/snapdata.js.
 // usage: node tools/gen.mjs [bots=600] [--write] [--seed=1]
 import { writeFileSync, existsSync, readFileSync } from 'node:fs';
-import { MON, MONS, TYPES, BOT_NAMES, RULES, TRINKET, price } from '../js/data.js?v=0.7.6';
-import { makeRng } from '../js/rng.js?v=0.7.6';
-import * as R from '../js/run.js?v=0.7.6';
-import { simulate } from '../js/battle.js?v=0.7.6';
-import { makeProfile, botDay } from '../js/bot.js?v=0.7.6';
+import { MON, MONS, TYPES, BOT_NAMES, RULES, TRINKET, price } from '../js/data.js?v=0.7.7';
+import { makeRng } from '../js/rng.js?v=0.7.7';
+import * as R from '../js/run.js?v=0.7.7';
+import { simulate } from '../js/battle.js?v=0.7.7';
+import { makeProfile, botDay } from '../js/bot.js?v=0.7.7';
 
 const args = process.argv.slice(2);
 const N = Number(args.find(a => /^\d+$/.test(a)) || 600);
@@ -23,11 +23,13 @@ for (let i = 0; i < N; i++) {
   const run = R.newRun('normal', (master() * 4294967296) >>> 0);
   const r = makeRng((master() * 4294967296) >>> 0);
   // half the bots know which mons won most in the last --learn pass (so strong mons get over-picked if they exist)
-  const informed = KNOW && i % 2 === 0;
-  bots.push({ run, r, informed, prof: makeProfile(r, run, informed ? KNOW : null), name: BOT_NAMES[i % BOT_NAMES.length] + (i >= BOT_NAMES.length ? ` ${Math.floor(i / BOT_NAMES.length) + 1}` : '') });
+  const tryhard = i % 3 === 0; // v0.7.7: a third of the bots play like committed players
+  const informed = KNOW && (tryhard || i % 2 === 0);
+  bots.push({ run, r, informed, tryhard, prof: makeProfile(r, run, informed ? KNOW : null, tryhard), name: BOT_NAMES[i % BOT_NAMES.length] + (i >= BOT_NAMES.length ? ` ${Math.floor(i / BOT_NAMES.length) + 1}` : '') });
 }
 
 const library = {};
+const prof = { tryhard: { n: 0, w: 0, champ: 0 }, casual: { n: 0, w: 0, champ: 0 } };
 const stats = { pred: { n: 0, ok: 0 }, predP: { n: 0, ok: 0 }, byDay: {}, mon: {}, type: {}, trk: {}, ends: { champion: 0, out: 0 }, sudden: 0, battles: 0, ties: 0 };
 const monStat = (id) => stats.mon[id] || (stats.mon[id] = { n: 0, w: 0 });
 const typeStat = (t) => stats.type[t] || (stats.type[t] = { n: 0, w: 0 });
@@ -35,7 +37,9 @@ const typeStat = (t) => stats.type[t] || (stats.type[t] = { n: 0, w: 0 });
 for (let day = 1; day <= 20; day++) {
   const alive = bots.filter(b => b.run.phase !== 'over');
   if (!alive.length) break;
-  for (const b of alive) botDay(b.run, b.r, b.prof);
+  // tryhards test their layout against a few strong teams from yesterday
+  const prevRefs = day > 1 ? library[day - 1].slice().sort((x, y) => y.rating - x.rating).slice(0, 12) : [];
+  for (const b of alive) { if (b.tryhard) b.prof.refs = prevRefs.length ? [0, 1, 2].map(() => master.pick(prevRefs)) : null; botDay(b.run, b.r, b.prof); }
   const snaps = alive.map(b => ({ b, s: R.snapshot(b.run, b.name) }));
   // library sample spread over power
   const sorted = snaps.map(x => x.s).sort((a, c) => a.power - c.power);
@@ -64,7 +68,9 @@ for (let day = 1; day <= 20; day++) {
     }
     for (const [t, c] of Object.entries(types)) if (c >= 3) { const ts = typeStat(t); ts.n++; if (won) ts.w++; }
     for (const t of s.trinkets) { const x = stats.trk[t] || (stats.trk[t] = { n: 0, w: 0 }); x.n++; if (won) x.w++; }
+    const pk = b.tryhard ? 'tryhard' : 'casual'; prof[pk].n++; if (won) prof[pk].w++;
     R.finishBattle(b.run, won, opp.s, res.gains[0], res.hp[1] / res.maxHp[1]);
+    if (b.run.phase === 'over' && b.run.result === 'champion') prof[pk].champ++;
     if (b.run.phase === 'over') stats.ends[b.run.result]++;
   }
 }
@@ -73,6 +79,7 @@ for (let day = 1; day <= 20; day++) {
 const pct = (a, b) => b ? (100 * a / b).toFixed(0) + '%' : '-';
 console.log(`bots ${N}, battles ${stats.battles}, sudden death ${pct(stats.sudden, stats.battles)}, ties ${stats.ties}`);
 console.log(`hidden rating predicts the winner ${pct(stats.pred.ok, stats.pred.n)} of the time; shown Power ${pct(stats.predP.ok, stats.predP.n)}`);
+console.log(`win rate: tryhard bots ${pct(prof.tryhard.w, prof.tryhard.n)} (${prof.tryhard.champ} champions), casual bots ${pct(prof.casual.w, prof.casual.n)} (${prof.casual.champ} champions)`);
 console.log(`champions ${stats.ends.champion} (${pct(stats.ends.champion, N)}), knocked out ${stats.ends.out}`);
 console.log('day  n    avgT  min  max  <15s  sudden avgPow  L2%  L3%  winnerHP');
 for (const [d, s] of Object.entries(stats.byDay)) {

@@ -584,3 +584,6 @@ main.fit { flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; flex-
 
 .bmon:has(.dbadge) .dm { display: none; }
 .dc-n small { font-family: var(--num); font-size: 12px; color: var(--gold); font-weight: 800; }
+
+.card.sold.tcard { flex-direction: column; gap: 2px; }
+.card.sold small { font-family: var(--num); font-size: 9.5px; letter-spacing: 0.08em; color: #6a6678; }
